@@ -281,8 +281,34 @@ def gate_request(method, path, params=None, body=None, retries=2):
 
 def fetch_live_public_klines(symbol, limit=100):
     try:
-        clean_sym = symbol.replace('_', '')
-        if clean_sym in ['BTCUSDT', 'ETHUSDT']:
+        url = f"https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract={symbol}&interval=1m&limit={limit}"
+        resp = requests.get(url, timeout=4)
+        if resp.status_code == 200:
+            raw = resp.json()
+            if isinstance(raw, list) and len(raw) > 0:
+                data = []
+                for item in raw:
+                    data.append({
+                        "t": int(item.get("t", 0)),
+                        "o": float(item.get("o", 0.0)),
+                        "h": float(item.get("h", 0.0)),
+                        "l": float(item.get("l", 0.0)),
+                        "c": float(item.get("c", 0.0)),
+                        "v": float(item.get("v", 0.0))
+                    })
+                df = pd.DataFrame(data)
+                df['close'] = df['c'].astype(float)
+                df['volume'] = df['v'].astype(float)
+                df['high'] = df['h'].astype(float)
+                df['low'] = df['l'].astype(float)
+                df['open'] = df['o'].astype(float)
+                return df
+    except Exception as e:
+        logger.error(f"Gate.io public klines fetch error for {symbol}: {e}")
+
+    clean_sym = symbol.replace('_', '')
+    if clean_sym in ['BTCUSDT', 'ETHUSDT']:
+        try:
             url = f"https://api.binance.com/api/v3/klines?symbol={clean_sym}&interval=1m&limit={limit}"
             resp = requests.get(url, timeout=3)
             if resp.status_code == 200:
@@ -304,8 +330,9 @@ def fetch_live_public_klines(symbol, limit=100):
                 df['low'] = df['l'].astype(float)
                 df['open'] = df['o'].astype(float)
                 return df
-    except Exception:
-        pass
+        except Exception:
+            pass
+
     return generate_fallback_klines(symbol, limit)
 
 def generate_fallback_klines(symbol, limit=250):
@@ -1855,6 +1882,27 @@ TERMINAL_HTML = """<!DOCTYPE html>
 </html>
 """
 
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+import urllib.parse
+import socket
+
+class ReusableHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        super().server_bind()
+
+def keep_render_alive():
+    """Background thread that pings self HTTP endpoint every 20 seconds to prevent Render free instance from sleeping."""
+    time.sleep(10)
+    logger.info("Initializing 24/7 Render Keep-Alive Self-Pinger Engine (Pinging every 20s)...")
+    while True:
+        try:
+            url = f"http://127.0.0.1:{HEALTH_SERVER_PORT}/api/stats"
+            requests.get(url, timeout=3)
+        except Exception:
+            pass
+        time.sleep(20)
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -1873,7 +1921,10 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path in ["/dashboard", "/"]:
+        parsed = urllib.parse.urlparse(self.path)
+        req_path = parsed.path.rstrip('/') or '/'
+
+        if req_path in ["/dashboard", "/", "", "/health"]:
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self._send_cors_headers()
@@ -1881,7 +1932,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.wfile.write(TERMINAL_HTML.encode("utf-8"))
             return
 
-        if self.path.startswith("/api/stats"):
+        if req_path.startswith("/api") or "stats" in req_path:
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self._send_cors_headers()
@@ -2032,6 +2083,9 @@ def main():
 
     heartbeat_thread = threading.Thread(target=bot_engine.run_heartbeat, daemon=True)
     heartbeat_thread.start()
+
+    pinger_thread = threading.Thread(target=keep_render_alive, daemon=True)
+    pinger_thread.start()
 
     logger.info("Terminal engine loop active. Polling 7 perpetual assets sub-second...")
 

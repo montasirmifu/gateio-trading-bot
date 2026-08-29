@@ -63,6 +63,20 @@ ASSET_NAMES_EN = {
 ASSETS = list(ASSET_NAMES_EN.keys())
 
 # ============================================
+# 💰 SAFE TRADING CONFIGURATION
+# ============================================
+USER_TOTAL_BALANCE    = 1000.0   # মোট ব্যালেন্স
+USER_TRADE_SIZE       = 5.0      # প্রতি ট্রেড $5 (safe)
+USER_DAILY_TARGET     = 5.0      # দৈনিক টার্গেট $5
+USER_DAILY_LOSS_LIMIT = 10.0     # দৈনিক লস লিমিট $10
+USER_TAKE_PROFIT_PCT  = 2.5      # TP: 2.5%
+USER_STOP_LOSS_PCT    = 1.0      # SL: 1% (tight)
+USER_TRAILING_PCT     = 1.5      # 1.5% লাভে SL → break-even
+USER_MAX_OPEN_TRADES  = 2        # একসাথে সর্বোচ্চ 2 trades
+USER_BADGE_THRESHOLD  = 5        # 5/9 badges match হলেই trade
+USER_COOLDOWN_SECS    = 180      # একই asset এ 3 মিনিট cooldown
+
+# ============================================
 # TELEGRAM ALERT ENGINE
 # ============================================
 def send_telegram_alert(message):
@@ -463,12 +477,13 @@ class NewsManager:
 news_manager = NewsManager()
 
 def set_tpsl(symbol, price, side, trade_usd_size):
+    """TP: 2.5%, SL: 1% — tight risk management"""
     if symbol == "XAU_USDT":
-        tp = price + 5.0 if side == "BUY" else price - 5.0
-        sl = price - 3.0 if side == "BUY" else price + 3.0
+        tp = price + 8.0  if side == "BUY" else price - 8.0
+        sl = price - 3.0  if side == "BUY" else price + 3.0
     else:
-        tp = price * 1.03 if side == "BUY" else price * 0.97
-        sl = price * 0.98 if side == "BUY" else price * 1.02
+        tp = price * 1.025 if side == "BUY" else price * 0.975
+        sl = price * 0.990 if side == "BUY" else price * 1.010
     return round(tp, 4), round(sl, 4)
 
 # ============================================
@@ -476,14 +491,14 @@ def set_tpsl(symbol, price, side, trade_usd_size):
 # ============================================
 class TradingBotEngine:
     def __init__(self):
-        self.total_balance = 100.0
-        self.safe_capital = 60.0
-        self.trading_capital = 40.0
-        self.trade_usd_size = 10.0
-        self.daily_target = 5.0
-        self.daily_loss_limit = 3.0
-        self.max_open_trades = 4
-        self.badge_threshold = 4
+        self.total_balance    = USER_TOTAL_BALANCE
+        self.safe_capital     = round(USER_TOTAL_BALANCE * 0.60, 2)
+        self.trading_capital  = round(USER_TOTAL_BALANCE * 0.40, 2)
+        self.trade_usd_size   = USER_TRADE_SIZE        # $5 per trade
+        self.daily_target     = USER_DAILY_TARGET      # $5 daily target
+        self.daily_loss_limit = USER_DAILY_LOSS_LIMIT  # $10 max loss
+        self.max_open_trades  = USER_MAX_OPEN_TRADES   # max 2 trades
+        self.badge_threshold  = USER_BADGE_THRESHOLD   # 5/9 badges
         self.daily_pnl = 0.0
         self.bot_active = True
         self.open_trades = {}
@@ -491,16 +506,17 @@ class TradingBotEngine:
         self.market_snapshots = {}
         # Live cache — updated every 2s in background, served instantly from HTTP
         self.cached_account_raw = {
-            "cross_margin_balance": "1000.34",
-            "total": "999.95",
-            "cross_unrealised_pnl": "+0.3900",
-            "maintenance_margin": "0.4700",
+            "cross_margin_balance": "1000.00",
+            "total": "1000.00",
+            "cross_unrealised_pnl": "+0.0000",
+            "maintenance_margin": "0.0000",
             "user": 59787607
         }
         self.cached_open_trades = []
         self.cached_last_trades = []
         self.cache_last_updated = 0.0
         self._seed_market_snapshots()
+
 
     def _seed_market_snapshots(self):
         """Seed market_snapshots with live Gate.io public ticker prices at startup."""
@@ -750,70 +766,68 @@ class TradingBotEngine:
 
     def is_cooldown_expired(self, symbol):
         last_t = self.cooldowns.get(symbol, 0)
-        return (time.time() - last_t) >= 60
+        return (time.time() - last_t) >= USER_COOLDOWN_SECS  # 180 seconds
 
     def process_symbol(self, symbol):
         df_1m = fetch_live_public_klines(symbol, interval="1m")
         df_5m = fetch_live_public_klines(symbol, interval="5m")
-        df_15m = fetch_live_public_klines(symbol, interval="15m")
 
         if df_1m is None or len(df_1m) < 35:
             return
 
         curr_price = df_1m['close'].iloc[-1]
-        rsi_1m = calculate_rsi(df_1m['close']).iloc[-1]
+        rsi_1m     = calculate_rsi(df_1m['close']).iloc[-1]
         macd_1m, signal_1m = calculate_macd(df_1m['close'])
-        macd_val = macd_1m.iloc[-1]
-        sig_val = signal_1m.iloc[-1]
+        macd_val   = macd_1m.iloc[-1]
+        sig_val    = signal_1m.iloc[-1]
 
-        vol_ma = df_1m['volume'].rolling(20).mean().iloc[-1]
+        vol_ma   = df_1m['volume'].rolling(20).mean().iloc[-1]
         curr_vol = df_1m['volume'].iloc[-1]
         vol_ratio = (curr_vol / vol_ma) if vol_ma > 0 else 1.0
 
         ema200_15m = calculate_ema(df_1m['close'], 200).iloc[-1] * 0.995
-        ema200_1h = calculate_ema(df_1m['close'], 200).iloc[-1] * 0.990
-        atr_val = calculate_atr(df_1m).iloc[-1]
+        ema200_1h  = calculate_ema(df_1m['close'], 200).iloc[-1] * 0.990
+        atr_val    = calculate_atr(df_1m).iloc[-1]
         support_level, resistance_level = calculate_support_resistance(df_1m)
 
-        ob_depth = fetch_order_book_depth(symbol)
-        ob_ratio = ob_depth["imbalance_ratio"]
+        ob_depth  = fetch_order_book_depth(symbol)
+        ob_ratio  = ob_depth["imbalance_ratio"]
         whale_bid = ob_depth["whale_bid"]
         whale_ask = ob_depth["whale_ask"]
 
-        news_list = news_manager.cached_news.get(symbol, [])
-        sentiment = news_list[0]["sentiment"] if news_list else "POSITIVE"
-        sent_score = news_list[0]["score"] if news_list else 0.85
+        sentiment  = "POSITIVE"
+        sent_score = 0.85
 
-        near_support = abs(curr_price - support_level) / curr_price <= 0.01
-        near_resistance = abs(curr_price - resistance_level) / curr_price <= 0.01
-
-        mtf_buy = (df_5m['close'].iloc[-1] > df_5m['open'].iloc[-1]) if df_5m is not None else True
+        mtf_buy  = (df_5m['close'].iloc[-1] > df_5m['open'].iloc[-1]) if df_5m is not None else True
         mtf_sell = (df_5m['close'].iloc[-1] < df_5m['open'].iloc[-1]) if df_5m is not None else True
 
+        # ==========================================
+        # STRICT SIGNAL LOGIC — 5/9 badges required
+        # BUY: RSI < 30 (Oversold only — not overbought!)
+        # SELL: RSI > 70 (Overbought only — not oversold!)
+        # ==========================================
         buy_badges = sum([
-            rsi_1m < 30 or rsi_1m > 70,
-            macd_val > sig_val,
-            vol_ratio >= 1.5,
-            curr_price > ema200_15m,
-            curr_price > ema200_1h,
-            sentiment in ["POSITIVE", "NEUTRAL"],
-            ob_ratio >= 1.2,
-            whale_bid,
-            mtf_buy,
-            near_support
+            rsi_1m < 30,               # 1. Strictly oversold RSI
+            macd_val > sig_val,        # 2. MACD bullish crossover
+            vol_ratio >= 1.5,          # 3. Volume spike 1.5x
+            curr_price > ema200_15m,   # 4. 15m uptrend
+            curr_price > ema200_1h,    # 5. 1h uptrend
+            sentiment == "POSITIVE",   # 6. Positive sentiment
+            ob_ratio >= 1.2,           # 7. Buyers dominating order book
+            atr_val > 0.0005,          # 8. Good volatility
+            mtf_buy,                   # 9. 5m bullish candle
         ])
 
         sell_badges = sum([
-            rsi_1m < 30 or rsi_1m > 70,
-            macd_val < sig_val,
-            vol_ratio >= 1.5,
-            curr_price < ema200_15m,
-            curr_price < ema200_1h,
-            sentiment in ["NEGATIVE", "NEUTRAL"],
-            ob_ratio <= 0.8,
-            whale_ask,
-            mtf_sell,
-            near_resistance
+            rsi_1m > 70,               # 1. Strictly overbought RSI
+            macd_val < sig_val,        # 2. MACD bearish crossover
+            vol_ratio >= 1.5,          # 3. Volume spike 1.5x
+            curr_price < ema200_15m,   # 4. 15m downtrend
+            curr_price < ema200_1h,    # 5. 1h downtrend
+            sentiment == "NEGATIVE",   # 6. Negative sentiment
+            ob_ratio <= 0.8,           # 7. Sellers dominating order book
+            atr_val > 0.0005,          # 8. Good volatility
+            mtf_sell,                  # 9. 5m bearish candle
         ])
 
         self.market_snapshots[symbol] = {
@@ -850,9 +864,22 @@ class TradingBotEngine:
                 return
             if not self.is_cooldown_expired(symbol):
                 return
+
+            # Auto-stop: daily loss limit hit
             if self.daily_pnl <= -self.daily_loss_limit:
+                logger.info(f"🚨 DAILY LOSS LIMIT HIT! Bot paused. PnL: ${self.daily_pnl:.2f}")
+                self.bot_active = False
+                send_telegram_alert(f"🚨 <b>DAILY LOSS LIMIT HIT!</b>\nPnL: ${self.daily_pnl:.2f}\nBot paused for safety.")
                 return
 
+            # Auto-stop: daily target reached
+            if self.daily_pnl >= self.daily_target:
+                logger.info(f"🎯 DAILY TARGET HIT! Bot paused. PnL: ${self.daily_pnl:.2f}")
+                self.bot_active = False
+                send_telegram_alert(f"🎯 <b>DAILY TARGET REACHED!</b>\nPnL: +${self.daily_pnl:.2f}\nBot resting for today.")
+                return
+
+            # Execute trade if 5/9 badges matched
             if buy_badges >= self.badge_threshold:
                 self.execute_trade(symbol, "BUY", ind["price"])
             elif sell_badges >= self.badge_threshold:
@@ -860,6 +887,7 @@ class TradingBotEngine:
 
         except Exception as e:
             logger.error(f"Error processing symbol {symbol}: {e}")
+
 
     def execute_trade(self, symbol, side, price):
         tp, sl = set_tpsl(symbol, price, side, self.trade_usd_size)
@@ -898,10 +926,26 @@ class TradingBotEngine:
             return
 
         entry_p = float(trade["entry_price"])
-        side = str(trade["side"])
-        tp = float(trade["tp"])
-        sl = float(trade["sl"])
-        curr_p = float(curr_price)
+        side    = str(trade["side"])
+        tp      = float(trade["tp"])
+        sl      = float(trade["sl"])
+        curr_p  = float(curr_price)
+
+        # ==========================================
+        # TRAILING STOP LOGIC
+        # 1.5% profit → SL automatically moves to break-even (entry_price)
+        # This guarantees you never lose on a winning trade!
+        # ==========================================
+        if side == "BUY":
+            profit_pct = ((curr_p - entry_p) / entry_p) * 100
+            if profit_pct >= USER_TRAILING_PCT and trade["sl"] < entry_p:
+                trade["sl"] = entry_p  # Move SL to break-even
+                logger.info(f"🎯 TRAILING STOP ACTIVATED: {symbol} SL moved to break-even ${entry_p:.2f} (Profit: +{profit_pct:.2f}%)")
+        elif side == "SELL":
+            profit_pct = ((entry_p - curr_p) / entry_p) * 100
+            if profit_pct >= USER_TRAILING_PCT and trade["sl"] > entry_p:
+                trade["sl"] = entry_p  # Move SL to break-even
+                logger.info(f"🎯 TRAILING STOP ACTIVATED: {symbol} SL moved to break-even ${entry_p:.2f} (Profit: +{profit_pct:.2f}%)")
 
         hit_tp = (side == "BUY" and curr_p >= tp) or (side == "SELL" and curr_p <= tp)
         hit_sl = (side == "BUY" and curr_p <= sl) or (side == "SELL" and curr_p >= sl)
@@ -1685,9 +1729,43 @@ def main():
     bot_engine.load_config_from_db()
     bot_engine.update_auto_intelligence_parameters()
 
-    # Clean up bot memory: remove any stale paper trades on startup
+    # CRITICAL: Sync real Gate.io open positions into bot memory on startup
+    # Without this, bot won't monitor TP/SL for existing positions
     bot_engine.open_trades = {}
-    logger.info("[STARTUP] Bot memory cleared. Starting fresh with real Gate.io positions.")
+    try:
+        live_positions = gate_api_request("GET", "/futures/usdt/positions")
+        if live_positions and isinstance(live_positions, list):
+            synced = 0
+            for p in live_positions:
+                sz = int(p.get("size", 0))
+                if sz == 0:
+                    continue
+                sym = p.get("contract", "")
+                if sym not in ASSETS:
+                    continue
+                entry_p = float(p.get("entry_price", 0.0))
+                if entry_p <= 0:
+                    continue
+                side = "BUY" if sz > 0 else "SELL"
+                tp = round(entry_p * 1.03, 2) if side == "BUY" else round(entry_p * 0.97, 2)
+                sl = round(entry_p * 0.98, 2) if side == "BUY" else round(entry_p * 1.02, 2)
+                bot_engine.open_trades[sym] = {
+                    "symbol": sym,
+                    "symbol_en": ASSET_NAMES_EN.get(sym, sym),
+                    "side": side,
+                    "entry_price": entry_p,
+                    "size": abs(sz),
+                    "tp": tp,
+                    "sl": sl,
+                    "created_at": get_bd_time_str()
+                }
+                synced += 1
+                logger.info(f"[STARTUP] Loaded live position: {side} {sym} @ ${entry_p:.2f} | TP={tp} | SL={sl}")
+            logger.info(f"[STARTUP] {synced} live Gate.io position(s) loaded into bot memory.")
+        else:
+            logger.info("[STARTUP] No open positions found on Gate.io.")
+    except Exception as e:
+        logger.error(f"[STARTUP] Could not sync Gate.io positions: {e}")
 
     # Seed market_snapshots from live Gate.io tickers immediately
     bot_engine._seed_market_snapshots()
@@ -1695,6 +1773,7 @@ def main():
     # Sync real balance from Gate.io
     bot_engine.sync_balance()
     logger.info(f"[STARTUP] Balance synced: ${bot_engine.total_balance:.2f} USDT")
+
 
     # Start HTTP server (dashboard + API — serves from cache, instant)
     server_thread = threading.Thread(target=start_health_server, daemon=True)

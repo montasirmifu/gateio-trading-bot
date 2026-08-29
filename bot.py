@@ -40,7 +40,7 @@ class NpEncoder(json.JSONEncoder):
 API_KEY = os.environ.get("GATEIO_API_KEY", "31f9642e6be6e52f9b38086cbe5cc301")
 SECRET_KEY = os.environ.get("GATEIO_SECRET_KEY", "48a8742cea8d553bd128f5a1f73cfa16ed40cc20a3ccf861eae1cebf7e49a8fe")
 PASSPHRASE = os.environ.get("GATEIO_PASSPHRASE", "MyFund2024Secure")
-ENVIRONMENT_MODE = os.environ.get("ENVIRONMENT_MODE", "TESTNET")
+ENVIRONMENT_MODE = os.environ.get("ENVIRONMENT_MODE", "LIVE")
 BASE_URL = "https://api-testnet.gateapi.io" if ENVIRONMENT_MODE == "TESTNET" else "https://api.gateio.ws"
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.usjrttgfmzqcqxigjryh:%24H-EEvz%3F%5ED%26t65w@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
 HEALTH_SERVER_PORT = int(os.environ.get("PORT", 10000))
@@ -51,30 +51,38 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "1787956063")
 GATEIO_KEY_VALID = True
 
 ASSET_NAMES_EN = {
-    "XAU_USDT": "Gold (XAU/USDT)",
-    "WTI_USDT": "Crude Oil (WTI/USDT)",
-    "BTC_USDT": "Bitcoin (BTC/USDT)",
-    "ETH_USDT": "Ethereum (ETH/USDT)",
+    # Crypto Majors
+    "BTC_USDT":   "Bitcoin (BTC/USDT)",
+    "ETH_USDT":   "Ethereum (ETH/USDT)",
+    "SOL_USDT":   "Solana (SOL/USDT)",
+    "XRP_USDT":   "Ripple (XRP/USDT)",
+    "LTC_USDT":   "Litecoin (LTC/USDT)",
+    "DOGE_USDT":  "Dogecoin (DOGE/USDT)",
+    # Commodities & Indices
+    "XAU_USDT":   "Gold (XAU/USDT)",
+    "WTI_USDT":   "Crude Oil (WTI/USDT)",
     "US100_USDT": "Nasdaq 100 (US100/USDT)",
-    "AAPL_USDT": "Apple Inc (AAPL/USDT)",
-    "NVDA_USDT": "Nvidia Corp (NVDA/USDT)"
+    # Stocks
+    "AAPL_USDT":  "Apple Inc (AAPL/USDT)",
+    "NVDA_USDT":  "Nvidia Corp (NVDA/USDT)",
 }
 
 ASSETS = list(ASSET_NAMES_EN.keys())
 
 # ============================================
-# 💰 SAFE TRADING CONFIGURATION
+# 💰 SAFE TRADING CONFIGURATION ($100 Account)
 # ============================================
-USER_TOTAL_BALANCE    = 1000.0   # মোট ব্যালেন্স
-USER_TRADE_SIZE       = 5.0      # প্রতি ট্রেড $5 (safe)
-USER_DAILY_TARGET     = 5.0      # দৈনিক টার্গেট $5
-USER_DAILY_LOSS_LIMIT = 10.0     # দৈনিক লস লিমিট $10
-USER_TAKE_PROFIT_PCT  = 2.5      # TP: 2.5%
-USER_STOP_LOSS_PCT    = 1.0      # SL: 1% (tight)
-USER_TRAILING_PCT     = 1.5      # 1.5% লাভে SL → break-even
-USER_MAX_OPEN_TRADES  = 2        # একসাথে সর্বোচ্চ 2 trades
-USER_BADGE_THRESHOLD  = 5        # 5/9 badges match হলেই trade
-USER_COOLDOWN_SECS    = 180      # একই asset এ 3 মিনিট cooldown
+USER_TOTAL_BALANCE    = 100.0   # মোট ব্যালেন্স: $100
+USER_TRADE_SIZE       = 5.0     # প্রতি ট্রেড $5 (5% of account)
+USER_DAILY_TARGET     = 2.0     # দৈনিক টার্গেট $2
+USER_DAILY_LOSS_LIMIT = 3.0     # দৈনিক লস লিমিট $3 (3% max)
+USER_TAKE_PROFIT_PCT  = 2.5     # TP: 2.5%
+USER_STOP_LOSS_PCT    = 1.0     # SL: 1%
+USER_TRAILING_PCT     = 1.5     # 1.5% লাভে SL → break-even
+USER_MAX_OPEN_TRADES  = 2       # একসাথে সর্বোচ্চ 2 trades
+USER_BADGE_THRESHOLD  = 5       # 5/9 badges match হলেই trade (strict)
+USER_COOLDOWN_SECS    = 180     # একই asset এ 3 মিনিট cooldown
+
 
 # ============================================
 # TELEGRAM ALERT ENGINE
@@ -578,23 +586,22 @@ class TradingBotEngine:
             self.daily_pnl = float(r[8])
 
     def update_auto_intelligence_parameters(self, trade_sz=None, daily_tgt=None):
-        self.trading_capital = round(self.total_balance * 0.40, 2)
-        self.safe_capital = round(self.total_balance * 0.60, 2)
+        self.trading_capital  = round(self.total_balance * 0.40, 2)
+        self.safe_capital     = round(self.total_balance * 0.60, 2)
+        # Always use USER constants — no DB or argument override allowed
+        self.trade_usd_size   = USER_TRADE_SIZE
+        self.daily_target     = USER_DAILY_TARGET
+        self.daily_loss_limit = USER_DAILY_LOSS_LIMIT
+        self.max_open_trades  = USER_MAX_OPEN_TRADES
+        self.badge_threshold  = USER_BADGE_THRESHOLD
 
-        if trade_sz is not None and trade_sz > 0:
-            self.trade_usd_size = float(trade_sz)
-        elif not hasattr(self, 'trade_usd_size') or self.trade_usd_size <= 0:
-            self.trade_usd_size = max(1.0, round(self.trading_capital * 0.10, 2))
+        # Sync correct values back to DB
+        execute_db_query("""UPDATE bot_state SET trade_usd_size = %s, daily_target = %s, daily_loss_limit = %s,
+            max_open_trades = %s, badge_threshold = %s, updated_at = (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours')
+            WHERE id = 1;""", (self.trade_usd_size, self.daily_target, self.daily_loss_limit,
+                               self.max_open_trades, self.badge_threshold))
+        logger.info(f"[CONFIG] Trade=${self.trade_usd_size} | Target=${self.daily_target} | Loss limit=${self.daily_loss_limit} | MaxTrades={self.max_open_trades} | Badge={self.badge_threshold}/9")
 
-        if daily_tgt is not None and daily_tgt > 0:
-            self.daily_target = float(daily_tgt)
-        else:
-            self.daily_target = 5.0
-
-        self.daily_loss_limit = 3.0
-        self.max_open_trades = 4
-        self.badge_threshold = 4
-        logger.info(f"Python Auto-Intelligence Calculated Parameters: Total=${self.total_balance}, Trade Size=${self.trade_usd_size}, Target=${self.daily_target} (Must Reach + Unlimited Upside), Loss Limit=${self.daily_loss_limit}, Max Trades={self.max_open_trades}")
 
     def sync_balance(self):
         try:
@@ -879,24 +886,30 @@ class TradingBotEngine:
                 send_telegram_alert(f"🎯 <b>DAILY TARGET REACHED!</b>\nPnL: +${self.daily_pnl:.2f}\nBot resting for today.")
                 return
 
-            # Execute trade if 5/9 badges matched
+            # Execute trade — badge count determines position size
             if buy_badges >= self.badge_threshold:
-                self.execute_trade(symbol, "BUY", ind["price"])
+                self.execute_trade(symbol, "BUY", ind["price"], buy_badges)
             elif sell_badges >= self.badge_threshold:
-                self.execute_trade(symbol, "SELL", ind["price"])
+                self.execute_trade(symbol, "SELL", ind["price"], sell_badges)
 
         except Exception as e:
             logger.error(f"Error processing symbol {symbol}: {e}")
 
 
-    def execute_trade(self, symbol, side, price):
-        tp, sl = set_tpsl(symbol, price, side, self.trade_usd_size)
-        contracts = max(1, int(self.trade_usd_size / price)) if price > 0 else 1
+    def execute_trade(self, symbol, side, price, badge_count=4):
+        # Fixed trade size — every trade is exactly USER_TRADE_SIZE ($5)
+        # For $100 account safety: no scaling, no risk multiplication
+        smart_size = self.trade_usd_size  # Always $5
+
+        tp, sl = set_tpsl(symbol, price, side, smart_size)
+        contracts = max(1, int(smart_size / price)) if price > 0 else 1
 
         order_res = place_order(symbol, side, contracts)
         order_id = order_res.get("id", int(time.time())) if isinstance(order_res, dict) else int(time.time())
-        log_api_event(f"/futures/usdt/orders", "POST", 200, 18, f"LIVE ORDER EXECUTED! {side} {symbol} @ ${price:,.2f} | ORDER ID: #{order_id}")
-        logger.info(f"ORDER EXECUTED ({ENVIRONMENT_MODE}): {side} {symbol} @ {price} | TP: {tp}, SL: {sl} | Resp: {order_res}")
+        log_api_event(f"/futures/usdt/orders", "POST", 200, 18, f"ORDER! {side} {symbol} @ ${price:,.2f} | Size=${smart_size:.2f} | #{order_id}")
+        logger.info(f"ORDER ({ENVIRONMENT_MODE}): {side} {symbol} @ {price} | Size=${smart_size:.2f} | TP={tp} SL={sl}")
+
+
 
         trade_info = {
             "symbol": symbol,
@@ -904,6 +917,7 @@ class TradingBotEngine:
             "side": side,
             "entry_price": price,
             "size": contracts,
+            "trade_usd": smart_size,
             "tp": tp,
             "sl": sl,
             "created_at": get_bd_time_str()
@@ -914,11 +928,24 @@ class TradingBotEngine:
         execute_db_query("""
             INSERT INTO bot_trades (symbol, side, entry_price, status, take_profit, stop_loss, size, created_at)
             VALUES (%s, %s, %s, 'OPEN', %s, %s, %s, (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours'));
-        """, (str(symbol), str(side), float(price), float(tp), float(sl), float(contracts)))
+        """, (str(symbol), str(side), float(price), float(tp), float(sl), float(smart_size)))
 
         sym_en = ASSET_NAMES_EN.get(symbol, symbol)
-        tg_msg = f"⚡ <b>INSTITUTIONAL TRADE EXECUTED!</b>\n\n<b>Asset:</b> {sym_en}\n<b>Order Type:</b> {side} ORDER\n<b>Entry Price:</b> ${float(price):,.2f}\n<b>Trade Size:</b> ${self.trade_usd_size:,.2f} USD\n<b>Take-Profit:</b> ${float(tp):,.2f}\n<b>Stop-Loss:</b> ${float(sl):,.2f}\n\n<i>Time: {get_bd_time_str()} (BD Time)</i>"
+        badge_label = "🔥 ULTRA STRONG" if badge_count >= 8 else ("⚡ STRONG" if badge_count >= 6 else "✅ VALID")
+        tg_msg = (
+            f"⚡ <b>TRADE EXECUTED!</b>\n\n"
+            f"<b>Asset:</b> {sym_en}\n"
+            f"<b>Direction:</b> {side} ORDER\n"
+            f"<b>Signal:</b> {badge_label} ({badge_count}/9 badges)\n"
+            f"<b>Entry:</b> ${float(price):,.2f}\n"
+            f"<b>Size:</b> ${smart_size:,.2f} USD\n"
+            f"<b>TP:</b> ${float(tp):,.2f} (+2.5%)\n"
+            f"<b>SL:</b> ${float(sl):,.2f} (-1.0%)\n"
+            f"<b>Max Loss:</b> ${smart_size * 0.01:,.2f}\n\n"
+            f"<i>{get_bd_time_str()} (BD Time)</i>"
+        )
         send_telegram_alert(tg_msg)
+
 
     def monitor_open_position(self, symbol, curr_price):
         trade = self.open_trades.get(symbol)
@@ -951,9 +978,13 @@ class TradingBotEngine:
         hit_sl = (side == "BUY" and curr_p <= sl) or (side == "SELL" and curr_p >= sl)
 
         if hit_tp or hit_sl:
+            # Fix 7: Use the actual trade size stored when trade was opened
+            # This ensures correct PnL even if USER_TRADE_SIZE changes later
+            actual_trade_usd = float(trade.get("trade_usd", self.trade_usd_size))
             pnl_pct = ((curr_p - entry_p) / entry_p) if side == "BUY" else ((entry_p - curr_p) / entry_p)
-            pnl_usd = round(pnl_pct * self.trade_usd_size, 2)
-            pnl_usd = max(-self.trade_usd_size * 0.05, min(self.trade_usd_size * 0.10, pnl_usd))
+            pnl_usd = round(pnl_pct * actual_trade_usd, 4)
+            # Cap: max loss = actual trade size, max profit = 10x (no artificial cap on winning)
+            pnl_usd = max(-actual_trade_usd, pnl_usd)
 
             reason = "TAKE_PROFIT_HIT" if hit_tp else "STOP_LOSS_HIT"
             close_res = place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])

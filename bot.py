@@ -817,8 +817,9 @@ class TradingBotEngine:
                         "symbol": sym,
                         "symbol_en": ASSET_NAMES_EN.get(sym, sym),
                         "side": side,
-                        "entry_price": float(c.get("open_price", close_price)),
-                        "exit_price": close_price,
+                        "entry_price": float(c.get("open_price", 0) or c.get("close_price", 0) or close_price),
+                        "exit_price": close_price or float(c.get("open_price", 0)),
+
                         "pnl": round(pnl_val, 4),
                         "status": status,
                         "exit_reason": "GATE.IO POSITION CLOSED",

@@ -1498,9 +1498,6 @@
                         const isProf = pnlVal >= 0;
                         const profPct = entryP > 0 ? ((Math.abs(pnlVal) / tradeSz) * 100).toFixed(2) : '0.00';
 
-                        const statusText = isOpen
-                            ? `<b style="color:${isProf?'#4ade80':'#f87171'}">LIVE: ${isProf?'+':'-'}$${Math.abs(pnlVal).toFixed(4)} (${isProf?'+':'-'}${profPct}%)</b>`
-                            : (isProf ? `CLOSED PROFIT: +$${pnlVal.toFixed(4)}` : `CLOSED LOSS: -$${Math.abs(pnlVal).toFixed(4)}`);
 
                         const partialTag = t.partial_done ? `<span style="background:#1a3a1a;color:#86efac;border:1px solid #16a34a;font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">50% BOOKED</span>` : '';
                         const trailTag  = (isOpen && pnlVal/tradeSz*100 >= 2.0) ? `<span style="background:#1a1a3a;color:#a5b4fc;border:1px solid #4f46e5;font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">TRAIL ON</span>` : '';

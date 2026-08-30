@@ -1104,8 +1104,9 @@
 
                 // USE REAL BACKEND DATA FOR ALL 7 ASSETS — no fake filter
                 // Open trades: ALL symbols, not just ETH
-                data.open_trades = (data.open_trades || []).filter(t => t && t.symbol && t.entry_price > 0);
-                data.last_trades  = (data.last_trades  || []).filter(t => t && t.symbol && t.entry_price > 0);
+                data.open_trades = (data.open_trades || []).filter(t => t && t.symbol);
+                data.last_trades  = (data.last_trades  || []).filter(t => t && t.symbol);
+
 
                 // Update live entry for any open trade
                 if (data.open_trades.length > 0) {
@@ -1133,8 +1134,9 @@
 
             // Filter: only real ETH_USDT trades (no paper BTC/XAU/US100/WTI/NVDA)
             // USE ALL BACKEND TRADES — all 7 assets, no filter
-            const realOpenTrades = (data.open_trades || []).filter(t => t && t.symbol && t.entry_price > 0);
-            const realLastTrades  = (data.last_trades  || []).filter(t => t && t.symbol && t.entry_price > 0);
+            const realOpenTrades = (data.open_trades || []).filter(t => t && t.symbol);
+            const realLastTrades  = (data.last_trades  || []).filter(t => t && t.symbol);
+
             globalTradesCache = realOpenTrades.concat(realLastTrades);
             data.open_trades = realOpenTrades;
             data.last_trades = realLastTrades;

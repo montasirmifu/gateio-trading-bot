@@ -38,10 +38,10 @@ class NpEncoder(json.JSONEncoder):
 # ENVIRONMENT & INSTITUTIONAL CREDENTIALS
 # ============================================
 API_KEY = os.environ.get("GATEIO_API_KEY", "31f9642e6be6e52f9b38086cbe5cc301")
-SECRET_KEY = os.environ.get("GATEIO_SECRET_KEY", "48a8742cea8d553bd128f5a1f73cfa16ed40cc20a3ccf861eae1cebf7e49a8fe")
+SECRET_KEY = os.environ.get("GATEIO_SECRET_KEY", "803a67ce0ff43f360efbeea9dbf4efac5cb1a1efcdcf3a8be720aeb4db59a35e")
 PASSPHRASE = os.environ.get("GATEIO_PASSPHRASE", "MyFund2024Secure")
-ENVIRONMENT_MODE = os.environ.get("ENVIRONMENT_MODE", "LIVE")
-BASE_URL = "https://api-testnet.gateapi.io" if ENVIRONMENT_MODE == "TESTNET" else "https://api.gateio.ws"
+ENVIRONMENT_MODE = os.environ.get("ENVIRONMENT_MODE", "TESTNET")
+BASE_URL = os.environ.get("GATEIO_BASE_URL", "https://api-testnet.gateapi.io")
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.usjrttgfmzqcqxigjryh:%24H-EEvz%3F%5ED%26t65w@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
 HEALTH_SERVER_PORT = int(os.environ.get("PORT", 10000))
 
@@ -51,18 +51,11 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "1787956063")
 GATEIO_KEY_VALID = True
 
 ASSET_NAMES_EN = {
-    # Crypto Majors
-    "BTC_USDT":   "Bitcoin (BTC/USDT)",
-    "ETH_USDT":   "Ethereum (ETH/USDT)",
-    "SOL_USDT":   "Solana (SOL/USDT)",
-    "XRP_USDT":   "Ripple (XRP/USDT)",
-    "LTC_USDT":   "Litecoin (LTC/USDT)",
-    "DOGE_USDT":  "Dogecoin (DOGE/USDT)",
-    # Commodities & Indices
     "XAU_USDT":   "Gold (XAU/USDT)",
     "WTI_USDT":   "Crude Oil (WTI/USDT)",
+    "BTC_USDT":   "Bitcoin (BTC/USDT)",
+    "ETH_USDT":   "Ethereum (ETH/USDT)",
     "US100_USDT": "Nasdaq 100 (US100/USDT)",
-    # Stocks
     "AAPL_USDT":  "Apple Inc (AAPL/USDT)",
     "NVDA_USDT":  "Nvidia Corp (NVDA/USDT)",
 }
@@ -70,18 +63,41 @@ ASSET_NAMES_EN = {
 ASSETS = list(ASSET_NAMES_EN.keys())
 
 # ============================================
-# 💰 SAFE TRADING CONFIGURATION ($100 Account)
+# SAFE TRADING CONFIGURATION ($100 Account)
 # ============================================
-USER_TOTAL_BALANCE    = 100.0   # মোট ব্যালেন্স: $100
-USER_TRADE_SIZE       = 5.0     # প্রতি ট্রেড $5 (5% of account)
-USER_DAILY_TARGET     = 2.0     # দৈনিক টার্গেট $2
-USER_DAILY_LOSS_LIMIT = 3.0     # দৈনিক লস লিমিট $3 (3% max)
-USER_TAKE_PROFIT_PCT  = 2.5     # TP: 2.5%
-USER_STOP_LOSS_PCT    = 1.0     # SL: 1%
-USER_TRAILING_PCT     = 1.5     # 1.5% লাভে SL → break-even
-USER_MAX_OPEN_TRADES  = 2       # একসাথে সর্বোচ্চ 2 trades
-USER_BADGE_THRESHOLD  = 5       # 5/9 badges match হলেই trade (strict)
-USER_COOLDOWN_SECS    = 180     # একই asset এ 3 মিনিট cooldown
+USER_TOTAL_BALANCE    = 100.0
+USER_TRADE_SIZE       = 5.0
+USER_DAILY_TARGET     = 2.0
+USER_DAILY_LOSS_LIMIT = 3.0
+USER_TAKE_PROFIT_PCT  = 2.5
+USER_STOP_LOSS_PCT    = 1.0
+USER_TRAILING_PCT     = 1.5
+USER_MAX_OPEN_TRADES  = 2
+USER_BADGE_THRESHOLD  = 5
+USER_COOLDOWN_SECS    = 180
+
+# ============================================
+# ADVANCED FEATURE CONSTANTS
+# ============================================
+BASE_TRADE_SIZE    = 5.0    # base $5 per trade
+SAFE_MODE_SIZE     = 2.0    # $2 in safe mode
+MAX_TRADE_SIZE     = 10.0   # dynamic cap
+MIN_TRADE_SIZE     = 2.0    # dynamic floor
+SAFE_MODE_BADGE    = 6      # badge threshold in safe mode
+# Staircase daily targets (must achieve in order)
+STAIRCASE_TARGETS  = [5.0, 6.0, 7.0, 8.0]
+SAFE_MODE_TRIGGER  = 8.0    # enter safe mode after $8 profit
+STOP_AFTER_PROFIT  = 5.0    # stop if loss after $5 achieved
+# Trailing stop (Update 1)
+TRAILING_TRIGGER   = 2.0    # % profit to activate trailing
+TRAILING_DISTANCE  = 1.5    # % below current price
+# Partial profit booking (Update 2)
+PARTIAL_TRIGGER    = 1.5    # % profit to close 50%
+PARTIAL_PCT        = 0.50   # close 50% of position
+# Dynamic risk adjustment (Update 5)
+DYNAMIC_UP_TRIGGER = 5.0    # pnl >= $5 → size +20%
+DYNAMIC_DN_TRIGGER = -2.0   # pnl <= -$2 → size -20%
+
 
 
 # ============================================
@@ -602,6 +618,69 @@ class TradingBotEngine:
                                self.max_open_trades, self.badge_threshold))
         logger.info(f"[CONFIG] Trade=${self.trade_usd_size} | Target=${self.daily_target} | Loss limit=${self.daily_loss_limit} | MaxTrades={self.max_open_trades} | Badge={self.badge_threshold}/9")
 
+    # ==========================================
+    # STAIRCASE DAILY TARGET LOGIC
+    # $5 → $6 → $7 → $8 → SAFE MODE
+    # ==========================================
+    def check_staircase(self):
+        pnl = self.daily_pnl
+        # Update peak
+        if not hasattr(self, 'daily_peak_pnl'): self.daily_peak_pnl = 0.0
+        if not hasattr(self, 'staircase_level'): self.staircase_level = 0
+        if not hasattr(self, 'safe_mode_active'): self.safe_mode_active = False
+        if pnl > self.daily_peak_pnl:
+            self.daily_peak_pnl = pnl
+        # Protected stop: loss after achieving $5 profit
+        if self.daily_peak_pnl >= STOP_AFTER_PROFIT and pnl < self.daily_peak_pnl - 0.01:
+            logger.info(f"[PROTECTED STOP] Peak=${self.daily_peak_pnl:.2f} Now=${pnl:.2f}")
+            self.bot_active = False
+            send_telegram_alert(
+                f"<b>PROTECTED STOP!</b>\n"
+                f"Peak profit: +${self.daily_peak_pnl:.2f}\nCurrent: ${pnl:.2f}\n"
+                f"Bot paused to protect profits!\n<i>{get_bd_time_str()} BD</i>")
+            return
+        # Hard daily loss limit
+        if pnl <= -abs(self.daily_loss_limit):
+            logger.info(f"[LOSS LIMIT] Daily loss ${pnl:.2f} hit limit!")
+            self.bot_active = False
+            send_telegram_alert(
+                f"<b>DAILY LOSS LIMIT HIT!</b>\nPnL: ${pnl:.2f}\n"
+                f"Bot paused for safety.\n<i>{get_bd_time_str()} BD</i>")
+            return
+        # Staircase milestone notifications
+        targets_hit = sum(1 for t in STAIRCASE_TARGETS if pnl >= t)
+        if targets_hit > self.staircase_level:
+            for i in range(self.staircase_level, targets_hit):
+                target = STAIRCASE_TARGETS[i]
+                logger.info(f"[STAIRCASE] ${target} target achieved! PnL=${pnl:.2f}")
+                send_telegram_alert(
+                    f"<b>TARGET ${target} ACHIEVED!</b>\n"
+                    f"Daily PnL: +${pnl:.2f}\nContinuing to next target...\n"
+                    f"<i>{get_bd_time_str()} BD</i>")
+            self.staircase_level = targets_hit
+        # Enter safe mode after $8
+        if pnl >= SAFE_MODE_TRIGGER and not self.safe_mode_active:
+            self.safe_mode_active = True
+            self.trade_usd_size   = SAFE_MODE_SIZE
+            self.badge_threshold  = SAFE_MODE_BADGE
+            logger.info(f"[SAFE MODE] Activated! PnL=${pnl:.2f} | Size=${SAFE_MODE_SIZE} | Badge={SAFE_MODE_BADGE}/9")
+            send_telegram_alert(
+                f"<b>SAFE MODE ACTIVATED!</b>\nAll $8 targets achieved!\n"
+                f"Trade size: ${SAFE_MODE_SIZE} | Badge: {SAFE_MODE_BADGE}/9\n"
+                f"99% capital protection ON\n<i>{get_bd_time_str()} BD</i>")
+
+    # ==========================================
+    # DYNAMIC RISK ADJUSTMENT (Update 5)
+    # ==========================================
+    def get_dynamic_trade_size(self):
+        if hasattr(self, 'safe_mode_active') and self.safe_mode_active:
+            return SAFE_MODE_SIZE
+        pnl = self.daily_pnl
+        if pnl >= DYNAMIC_UP_TRIGGER:
+            return min(round(BASE_TRADE_SIZE * 1.20, 2), MAX_TRADE_SIZE)
+        elif pnl <= DYNAMIC_DN_TRIGGER:
+            return max(round(BASE_TRADE_SIZE * 0.80, 2), MIN_TRADE_SIZE)
+        return BASE_TRADE_SIZE
 
     def sync_balance(self):
         try:
@@ -776,8 +855,9 @@ class TradingBotEngine:
         return (time.time() - last_t) >= USER_COOLDOWN_SECS  # 180 seconds
 
     def process_symbol(self, symbol):
-        df_1m = fetch_live_public_klines(symbol, interval="1m")
-        df_5m = fetch_live_public_klines(symbol, interval="5m")
+        df_1m  = fetch_live_public_klines(symbol, interval="1m")
+        df_5m  = fetch_live_public_klines(symbol, interval="5m")
+        df_15m = fetch_live_public_klines(symbol, interval="15m")
 
         if df_1m is None or len(df_1m) < 35:
             return
@@ -805,37 +885,52 @@ class TradingBotEngine:
         sentiment  = "POSITIVE"
         sent_score = 0.85
 
+        # ==========================================
+        # UPDATE 4: MULTI-TIMEFRAME RSI CONFIRMATION
+        # BUY:  1m<30 AND 5m<32 AND 15m<35
+        # SELL: 1m>70 AND 5m>68 AND 15m>65
+        # ==========================================
+        rsi_5m  = float(calculate_rsi(df_5m['close']).iloc[-1])  if df_5m  is not None and len(df_5m)  > 20 else 50.0
+        rsi_15m = float(calculate_rsi(df_15m['close']).iloc[-1]) if df_15m is not None and len(df_15m) > 20 else 50.0
+        mtf_rsi_buy  = (float(rsi_1m) < 30) and (rsi_5m < 32) and (rsi_15m < 35)
+        mtf_rsi_sell = (float(rsi_1m) > 70) and (rsi_5m > 68) and (rsi_15m > 65)
+
         mtf_buy  = (df_5m['close'].iloc[-1] > df_5m['open'].iloc[-1]) if df_5m is not None else True
         mtf_sell = (df_5m['close'].iloc[-1] < df_5m['open'].iloc[-1]) if df_5m is not None else True
 
+
         # ==========================================
         # STRICT SIGNAL LOGIC — 5/9 badges required
-        # BUY: RSI < 30 (Oversold only — not overbought!)
-        # SELL: RSI > 70 (Overbought only — not oversold!)
+        # ==========================================
+        # ADVANCED BADGE LOGIC — 10 badges
+        # Update 4: Multi-TF RSI replaces simple RSI
         # ==========================================
         buy_badges = sum([
-            rsi_1m < 30,               # 1. Strictly oversold RSI
-            macd_val > sig_val,        # 2. MACD bullish crossover
-            vol_ratio >= 1.5,          # 3. Volume spike 1.5x
-            curr_price > ema200_15m,   # 4. 15m uptrend
-            curr_price > ema200_1h,    # 5. 1h uptrend
-            sentiment == "POSITIVE",   # 6. Positive sentiment
-            ob_ratio >= 1.2,           # 7. Buyers dominating order book
-            atr_val > 0.0005,          # 8. Good volatility
-            mtf_buy,                   # 9. 5m bullish candle
+            bool(mtf_rsi_buy),             # 1. Multi-TF RSI: 1m<30 AND 5m<32 AND 15m<35
+            macd_val > sig_val,            # 2. MACD bullish crossover
+            vol_ratio >= 1.5,              # 3. Volume spike 1.5x
+            curr_price > ema200_15m,       # 4. Above 15m EMA200
+            curr_price > ema200_1h,        # 5. Above 1h EMA200
+            sentiment == "POSITIVE",       # 6. Positive sentiment
+            ob_ratio >= 1.2,               # 7. Buyers dominating order book
+            bool(whale_bid),               # 8. Whale buy detected
+            mtf_buy,                       # 9. 5m bullish candle
+            abs(curr_price - support_level) / max(curr_price, 1) <= 0.01,  # 10. Near support
         ])
 
         sell_badges = sum([
-            rsi_1m > 70,               # 1. Strictly overbought RSI
-            macd_val < sig_val,        # 2. MACD bearish crossover
-            vol_ratio >= 1.5,          # 3. Volume spike 1.5x
-            curr_price < ema200_15m,   # 4. 15m downtrend
-            curr_price < ema200_1h,    # 5. 1h downtrend
-            sentiment == "NEGATIVE",   # 6. Negative sentiment
-            ob_ratio <= 0.8,           # 7. Sellers dominating order book
-            atr_val > 0.0005,          # 8. Good volatility
-            mtf_sell,                  # 9. 5m bearish candle
+            bool(mtf_rsi_sell),            # 1. Multi-TF RSI: 1m>70 AND 5m>68 AND 15m>65
+            macd_val < sig_val,            # 2. MACD bearish crossover
+            vol_ratio >= 1.5,              # 3. Volume spike 1.5x
+            curr_price < ema200_15m,       # 4. Below 15m EMA200
+            curr_price < ema200_1h,        # 5. Below 1h EMA200
+            sentiment == "NEGATIVE",       # 6. Negative sentiment
+            ob_ratio <= 0.8,               # 7. Sellers dominating order book
+            bool(whale_ask),               # 8. Whale sell detected
+            mtf_sell,                      # 9. 5m bearish candle
+            abs(curr_price - resistance_level) / max(curr_price, 1) <= 0.01,  # 10. Near resistance
         ])
+
 
         self.market_snapshots[symbol] = {
             "price": curr_price,
@@ -897,19 +992,19 @@ class TradingBotEngine:
 
 
     def execute_trade(self, symbol, side, price, badge_count=4):
-        # Fixed trade size — every trade is exactly USER_TRADE_SIZE ($5)
-        # For $100 account safety: no scaling, no risk multiplication
-        smart_size = self.trade_usd_size  # Always $5
+        # Dynamic trade size (Update 5)
+        smart_size = self.get_dynamic_trade_size()
 
         tp, sl = set_tpsl(symbol, price, side, smart_size)
         contracts = max(1, int(smart_size / price)) if price > 0 else 1
 
         order_res = place_order(symbol, side, contracts)
         order_id = order_res.get("id", int(time.time())) if isinstance(order_res, dict) else int(time.time())
-        log_api_event(f"/futures/usdt/orders", "POST", 200, 18, f"ORDER! {side} {symbol} @ ${price:,.2f} | Size=${smart_size:.2f} | #{order_id}")
-        logger.info(f"ORDER ({ENVIRONMENT_MODE}): {side} {symbol} @ {price} | Size=${smart_size:.2f} | TP={tp} SL={sl}")
+        log_api_event(f"/futures/usdt/orders", "POST", 200, 18, f"ORDER! {side} {symbol} @ ${price:,.4f} | Size=${smart_size:.2f} | #{order_id}")
+        logger.info(f"[TRADE] {side} {symbol} @ {price} | Size=${smart_size:.2f} | Badges={badge_count}/10 | TP={tp} SL={sl}")
 
-
+        # Check staircase after sizing decision
+        self.check_staircase()
 
         trade_info = {
             "symbol": symbol,
@@ -920,10 +1015,12 @@ class TradingBotEngine:
             "trade_usd": smart_size,
             "tp": tp,
             "sl": sl,
+            "partial_done": False,   # Update 2: partial profit tracking
             "created_at": get_bd_time_str()
         }
         self.open_trades[symbol] = trade_info
         self.cooldowns[symbol] = time.time()
+
 
         execute_db_query("""
             INSERT INTO bot_trades (symbol, side, entry_price, status, take_profit, stop_loss, size, created_at)
@@ -957,22 +1054,59 @@ class TradingBotEngine:
         tp      = float(trade["tp"])
         sl      = float(trade["sl"])
         curr_p  = float(curr_price)
+        actual_trade_usd = float(trade.get("trade_usd", self.trade_usd_size))
+        contracts = int(trade.get("size", 1))
 
-        # ==========================================
-        # TRAILING STOP LOGIC
-        # 1.5% profit → SL automatically moves to break-even (entry_price)
-        # This guarantees you never lose on a winning trade!
-        # ==========================================
+        # Profit % calculation
         if side == "BUY":
             profit_pct = ((curr_p - entry_p) / entry_p) * 100
-            if profit_pct >= USER_TRAILING_PCT and trade["sl"] < entry_p:
-                trade["sl"] = entry_p  # Move SL to break-even
-                logger.info(f"🎯 TRAILING STOP ACTIVATED: {symbol} SL moved to break-even ${entry_p:.2f} (Profit: +{profit_pct:.2f}%)")
-        elif side == "SELL":
+        else:
             profit_pct = ((entry_p - curr_p) / entry_p) * 100
-            if profit_pct >= USER_TRAILING_PCT and trade["sl"] > entry_p:
-                trade["sl"] = entry_p  # Move SL to break-even
-                logger.info(f"🎯 TRAILING STOP ACTIVATED: {symbol} SL moved to break-even ${entry_p:.2f} (Profit: +{profit_pct:.2f}%)")
+
+        # ==========================================
+        # UPDATE 2: PARTIAL PROFIT BOOKING at 1.5%
+        # Close 50% of position, let 50% run to TP
+        # ==========================================
+        if not trade.get("partial_done", False) and profit_pct >= PARTIAL_TRIGGER:
+            p_contracts = max(1, contracts // 2)
+            close_side = "SELL" if side == "BUY" else "BUY"
+            place_order(symbol, close_side, p_contracts)
+            p_pnl = round((profit_pct / 100) * actual_trade_usd * PARTIAL_PCT, 4)
+            trade["partial_done"] = True
+            trade["size"] = max(1, contracts - p_contracts)
+            self.daily_pnl = round(self.daily_pnl + p_pnl, 4)
+            if not hasattr(self, 'daily_peak_pnl'): self.daily_peak_pnl = 0.0
+            self.daily_peak_pnl = max(self.daily_peak_pnl, self.daily_pnl)
+            logger.info(f"[PARTIAL] {symbol} 50% closed @ {profit_pct:.2f}% profit | +${p_pnl:.4f}")
+            send_telegram_alert(
+                f"<b>PARTIAL PROFIT BOOKED!</b>\n"
+                f"<b>Asset:</b> {ASSET_NAMES_EN.get(symbol, symbol)}\n"
+                f"<b>Closed:</b> 50% of position @ {profit_pct:.2f}% profit\n"
+                f"<b>Booked:</b> +${p_pnl:.4f}\n"
+                f"<b>Remaining:</b> 50% continues to TP ${tp:,.4f}\n"
+                f"<i>{get_bd_time_str()} BD</i>")
+            self.check_staircase()
+
+        # ==========================================
+        # UPDATE 1: TRAILING STOP at 2% profit
+        # SL moves to 1.5% below current price
+        # ==========================================
+        if profit_pct >= TRAILING_TRIGGER:
+            if side == "BUY":
+                new_sl = round(curr_p * (1 - TRAILING_DISTANCE / 100), 4)
+                if new_sl > trade["sl"]:
+                    old_sl = trade["sl"]
+                    trade["sl"] = new_sl
+                    sl = new_sl
+                    logger.info(f"[TRAIL] {symbol} BUY SL: ${old_sl:.4f} → ${new_sl:.4f} (+{profit_pct:.2f}%)")
+            else:
+                new_sl = round(curr_p * (1 + TRAILING_DISTANCE / 100), 4)
+                if new_sl < trade["sl"]:
+                    old_sl = trade["sl"]
+                    trade["sl"] = new_sl
+                    sl = new_sl
+                    logger.info(f"[TRAIL] {symbol} SELL SL: ${old_sl:.4f} → ${new_sl:.4f} (+{profit_pct:.2f}%)")
+
 
         hit_tp = (side == "BUY" and curr_p >= tp) or (side == "SELL" and curr_p <= tp)
         hit_sl = (side == "BUY" and curr_p <= sl) or (side == "SELL" and curr_p >= sl)

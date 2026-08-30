@@ -794,37 +794,73 @@ class TradingBotEngine:
             logger.error(f"[CACHE] Positions refresh error: {e}")
 
         try:
-            # ── Trade fills (ETH_USDT, signed API)
-            fills = gate_api_request("GET", "/futures/usdt/my_trades", query_params={"contract": "ETH_USDT", "limit": 20})
-            if fills and isinstance(fills, list) and len(fills) > 0:
+            # ── Real closed position history with actual realized PnL
+            closed = gate_api_request("GET", "/futures/usdt/position_close",
+                                      query_params={"limit": 20})
+            if closed and isinstance(closed, list) and len(closed) > 0:
                 last_trades_new = []
-                for t in fills:
-                    p_val = float(t.get("price", 0.0))
-                    sz = int(t.get("size", 1))
-                    if p_val <= 0 or sz == 0:
-                        continue
-                    sym = t.get("contract", "ETH_USDT")
-                    side = "BUY" if sz > 0 else "SELL"
-                    t_time = datetime.fromtimestamp(float(t.get("create_time", time.time()))).strftime("%Y-%m-%d %I:%M:%S %p")
+                for c in closed:
+                    sym = c.get("contract", "ETH_USDT")
+                    pnl_val = float(c.get("pnl", 0.0))
+                    close_price = float(c.get("close_price", 0.0))
+                    entry_price = 0.0
+                    # entry_price not directly in position_close; estimate from side & pnl
+                    side_raw = c.get("side", "long")
+                    side = "BUY" if side_raw == "long" else "SELL"
+                    sz = abs(int(c.get("size", 1)))
+                    t_open = c.get("time", time.time())
+                    t_close = c.get("close_time", t_open)
+                    open_time_str  = datetime.fromtimestamp(float(t_open)).strftime("%Y-%m-%d %I:%M:%S %p")
+                    close_time_str = datetime.fromtimestamp(float(t_close)).strftime("%Y-%m-%d %I:%M:%S %p")
+                    status = "WIN" if pnl_val > 0 else ("LOSS" if pnl_val < 0 else "BREAKEVEN")
                     last_trades_new.append({
-                        "symbol": sym, "symbol_en": ASSET_NAMES_EN.get(sym, sym),
-                        "side": side, "entry_price": p_val, "exit_price": p_val, "pnl": 0.0,
-                        "status": "FILLED", "exit_reason": "GATE.IO REALTIME ORDER FILLED",
-                        "created_at": t_time, "tp": round(p_val * 1.03, 2), "sl": round(p_val * 0.98, 2),
-                        "size": abs(sz), "order_id": str(t.get("order_id", t.get("id", ""))),
+                        "symbol": sym,
+                        "symbol_en": ASSET_NAMES_EN.get(sym, sym),
+                        "side": side,
+                        "entry_price": float(c.get("open_price", close_price)),
+                        "exit_price": close_price,
+                        "pnl": round(pnl_val, 4),
+                        "status": status,
+                        "exit_reason": "GATE.IO POSITION CLOSED",
+                        "created_at": open_time_str,
+                        "closed_at": close_time_str,
+                        "tp": round(close_price * 1.03, 2),
+                        "sl": round(close_price * 0.98, 2),
+                        "size": sz,
+                        "order_id": str(c.get("order_id", c.get("id", ""))),
                         "gateio_link": link_base.format(sym=sym)
                     })
                 if last_trades_new:
                     self.cached_last_trades = last_trades_new
             else:
-                # Fallback: known real fills
-                if not self.cached_last_trades:
-                    self.cached_last_trades = [
-                        {"symbol":"ETH_USDT","symbol_en":"Ethereum (ETH/USDT)","side":"BUY","entry_price":2452.65,"exit_price":2452.65,"pnl":0.0,"status":"FILLED","exit_reason":"GATE.IO REALTIME ORDER FILLED","created_at":"2026-08-30 12:48:39 AM","tp":2526.23,"sl":2403.60,"size":1,"order_id":"11259000695221807","gateio_link":link_base.format(sym="ETH_USDT")},
-                        {"symbol":"ETH_USDT","symbol_en":"Ethereum (ETH/USDT)","side":"BUY","entry_price":2450.30,"exit_price":2450.30,"pnl":0.0,"status":"FILLED","exit_reason":"GATE.IO REALTIME ORDER FILLED","created_at":"2026-08-30 12:40:43 AM","tp":2523.81,"sl":2401.29,"size":1,"order_id":"11259000695221248","gateio_link":link_base.format(sym="ETH_USDT")},
-                        {"symbol":"ETH_USDT","symbol_en":"Ethereum (ETH/USDT)","side":"BUY","entry_price":2435.50,"exit_price":2435.50,"pnl":0.0,"status":"FILLED","exit_reason":"GATE.IO REALTIME ORDER FILLED","created_at":"2026-08-29 04:51:18 PM","tp":2508.57,"sl":2386.79,"size":1,"order_id":"755815089","gateio_link":link_base.format(sym="ETH_USDT")},
-                        {"symbol":"ETH_USDT","symbol_en":"Ethereum (ETH/USDT)","side":"BUY","entry_price":2435.30,"exit_price":2435.30,"pnl":0.0,"status":"FILLED","exit_reason":"GATE.IO REALTIME ORDER FILLED","created_at":"2026-08-29 04:49:21 PM","tp":2508.36,"sl":2386.59,"size":1,"order_id":"755814997","gateio_link":link_base.format(sym="ETH_USDT")},
-                    ]
+                # Fallback: recent trade fills (no fake data, only real API fills)
+                fills = gate_api_request("GET", "/futures/usdt/my_trades",
+                                         query_params={"limit": 20})
+                if fills and isinstance(fills, list) and len(fills) > 0:
+                    last_trades_new = []
+                    seen = set()
+                    for t in fills:
+                        p_val = float(t.get("price", 0.0))
+                        sz = int(t.get("size", 0))
+                        oid = str(t.get("order_id", t.get("id", "")))
+                        if p_val <= 0 or sz == 0 or oid in seen:
+                            continue
+                        seen.add(oid)
+                        sym = t.get("contract", "ETH_USDT")
+                        side = "BUY" if sz > 0 else "SELL"
+                        t_time = datetime.fromtimestamp(float(t.get("create_time", time.time()))).strftime("%Y-%m-%d %I:%M:%S %p")
+                        last_trades_new.append({
+                            "symbol": sym, "symbol_en": ASSET_NAMES_EN.get(sym, sym),
+                            "side": side, "entry_price": p_val, "exit_price": p_val,
+                            "pnl": 0.0, "status": "FILLED",
+                            "exit_reason": "GATE.IO ORDER EXECUTED",
+                            "created_at": t_time, "closed_at": t_time,
+                            "tp": round(p_val * 1.03, 2), "sl": round(p_val * 0.98, 2),
+                            "size": abs(sz), "order_id": oid,
+                            "gateio_link": link_base.format(sym=sym)
+                        })
+                    if last_trades_new:
+                        self.cached_last_trades = last_trades_new
         except Exception as e:
             logger.error(f"[CACHE] Trades refresh error: {e}")
 

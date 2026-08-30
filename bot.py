@@ -1683,9 +1683,16 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             if req_path in ["/dashboard", "/", "", "/health"]:
                 self.send_response(200)
                 self._send_cors_headers()
-                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(TERMINAL_HTML.encode("utf-8"))
+                html_content = TERMINAL_HTML
+                if os.path.exists("index.html"):
+                    try:
+                        with open("index.html", "r", encoding="utf-8") as f:
+                            html_content = f.read()
+                    except Exception:
+                        pass
+                self.wfile.write(html_content.encode("utf-8"))
                 return
 
             if req_path == "/api/balance":

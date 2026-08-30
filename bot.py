@@ -794,17 +794,16 @@ class TradingBotEngine:
             logger.error(f"[CACHE] Positions refresh error: {e}")
 
         try:
-            # ── Real closed position history with actual realized PnL
+            # ── Real closed position history with actual realized PnL (up to 100 records)
             closed = gate_api_request("GET", "/futures/usdt/position_close",
-                                      query_params={"limit": 20})
+                                      query_params={"limit": 100})
+            last_trades_new = []
+            seen_ids = set()
             if closed and isinstance(closed, list) and len(closed) > 0:
-                last_trades_new = []
                 for c in closed:
                     sym = c.get("contract", "ETH_USDT")
                     pnl_val = float(c.get("pnl", 0.0))
                     close_price = float(c.get("close_price", 0.0))
-                    entry_price = 0.0
-                    # entry_price not directly in position_close; estimate from side & pnl
                     side_raw = c.get("side", "long")
                     side = "BUY" if side_raw == "long" else "SELL"
                     sz = abs(int(c.get("size", 1)))
@@ -813,13 +812,14 @@ class TradingBotEngine:
                     open_time_str  = datetime.fromtimestamp(float(t_open)).strftime("%Y-%m-%d %I:%M:%S %p")
                     close_time_str = datetime.fromtimestamp(float(t_close)).strftime("%Y-%m-%d %I:%M:%S %p")
                     status = "WIN" if pnl_val > 0 else ("LOSS" if pnl_val < 0 else "BREAKEVEN")
+                    oid = str(c.get("order_id", c.get("id", f"{sym}_{t_open}")))
+                    seen_ids.add(oid)
                     last_trades_new.append({
                         "symbol": sym,
                         "symbol_en": ASSET_NAMES_EN.get(sym, sym),
                         "side": side,
                         "entry_price": float(c.get("open_price", 0) or c.get("close_price", 0) or close_price),
                         "exit_price": close_price or float(c.get("open_price", 0)),
-
                         "pnl": round(pnl_val, 4),
                         "status": status,
                         "exit_reason": "GATE.IO POSITION CLOSED",
@@ -828,15 +828,53 @@ class TradingBotEngine:
                         "tp": round(close_price * 1.03, 2),
                         "sl": round(close_price * 0.98, 2),
                         "size": sz,
-                        "order_id": str(c.get("order_id", c.get("id", ""))),
+                        "order_id": oid,
                         "gateio_link": link_base.format(sym=sym)
                     })
-                if last_trades_new:
-                    self.cached_last_trades = last_trades_new
+
+            # Also fetch from Supabase bot_trades DB table to guarantee 100% 1-year historical recall
+            try:
+                db_trades = execute_db_query(
+                    "SELECT symbol, side, entry_price, exit_price, pnl, status, exit_reason, take_profit, stop_loss, size, created_at, id FROM bot_trades WHERE status = 'CLOSED' ORDER BY id DESC LIMIT 500;",
+                    fetch=True
+                ) or []
+                for dt in db_trades:
+                    sym = dt[0] or "ETH_USDT"
+                    side = dt[1] or "BUY"
+                    ep = float(dt[2] or 0)
+                    xp = float(dt[3] or ep)
+                    pnl_v = float(dt[4] or 0)
+                    st = "WIN" if pnl_v > 0 else ("LOSS" if pnl_v < 0 else "BREAKEVEN")
+                    c_at = str(dt[10])
+                    oid = f"db_{dt[11]}"
+                    if oid not in seen_ids:
+                        seen_ids.add(oid)
+                        last_trades_new.append({
+                            "symbol": sym,
+                            "symbol_en": ASSET_NAMES_EN.get(sym, sym),
+                            "side": side,
+                            "entry_price": ep,
+                            "exit_price": xp,
+                            "pnl": round(pnl_v, 4),
+                            "status": st,
+                            "exit_reason": str(dt[6] or "DATABASE RECORD"),
+                            "created_at": c_at,
+                            "closed_at": c_at,
+                            "tp": float(dt[7] or (ep * 1.03)),
+                            "sl": float(dt[8] or (ep * 0.98)),
+                            "size": float(dt[9] or 1.0),
+                            "order_id": oid,
+                            "gateio_link": link_base.format(sym=sym)
+                        })
+            except Exception as dbe:
+                logger.error(f"[CACHE] DB trades fetch warning: {dbe}")
+
+            if last_trades_new:
+                self.cached_last_trades = last_trades_new
             else:
                 # Fallback: recent trade fills (no fake data, only real API fills)
                 fills = gate_api_request("GET", "/futures/usdt/my_trades",
-                                         query_params={"limit": 20})
+                                         query_params={"limit": 50})
                 if fills and isinstance(fills, list) and len(fills) > 0:
                     last_trades_new = []
                     seen = set()

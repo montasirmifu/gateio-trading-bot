@@ -371,35 +371,57 @@
         </div>
 
         <div class="cap-card" id="tunerCard">
-            <div class="cap-title" style="color: var(--cyan-accent); font-weight:bold; margin-bottom: 10px;">⚡ BOT ENGINE STATUS</div>
+            <div class="cap-title" style="color: var(--cyan-accent); font-weight:bold; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>⚡ BOT ENGINE STATUS & PROTOCOLS</span>
+                <span style="background:#052e16; color:#4ade80; border:1px solid #16a34a; font-size:0.65rem; padding:2px 6px; border-radius:4px;" id="botActivePill">AUTOPILOT ON</span>
+            </div>
 
             <!-- FIXED $5 LOCKED DISPLAY -->
-            <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
-                <div style="font-size: 1.8rem;">🔒</div>
+            <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                <div style="font-size: 1.5rem;">🔒</div>
                 <div style="flex: 1;">
-                    <div style="color: #4ade80; font-weight: bold; font-size: 1rem;">FIXED TRADE SIZE: $5.00 USD</div>
-                    <div style="color: #86efac; font-size: 0.7rem; margin-top: 4px;">Auto Staircase: $5 → $6 → $7 → $8 | Daily Stop Loss: $3 | Daily Target: $2</div>
+                    <div style="color: #4ade80; font-weight: bold; font-size: 0.9rem;">FIXED $5.00 USD / TRADE (LOCKED)</div>
+                    <div style="color: #86efac; font-size: 0.68rem; margin-top: 2px;">Daily Stop-Loss: -$3.00 | Target: $2.00 | Auto-Pauses on Limit</div>
                 </div>
-                <div style="background: #15803d; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">✅ $5 LOCKED</div>
+                <div style="background: #15803d; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: bold; white-space: nowrap;">100% PROTECTED</div>
+            </div>
+
+            <!-- TARGET PROGRESS & LOSS METERS -->
+            <div style="background:#090d16; border:1px solid #1e293b; border-radius:6px; padding:8px 10px; margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; font-weight:bold; margin-bottom:3px;">
+                    <span style="color:#38bdf8;">🎯 DAILY PROFIT TARGET ($2.00)</span>
+                    <span id="targetProgPct" style="color:#4ade80;">0% ($2.00 to go)</span>
+                </div>
+                <div style="width:100%; background:#1e293b; height:7px; border-radius:4px; overflow:hidden;">
+                    <div id="targetProgBar" style="height:100%; background:linear-gradient(90deg, #0284c7, #00e676); width:0%; transition:width 0.5s ease;"></div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; font-weight:bold; margin-top:8px; margin-bottom:3px;">
+                    <span style="color:#f87171;">🛑 DAILY LOSS LIMIT (-$3.00 AUTO-OFF)</span>
+                    <span id="lossBufferText" style="color:#38bdf8;">$3.00 buffer left</span>
+                </div>
+                <div style="width:100%; background:#1e293b; height:7px; border-radius:4px; overflow:hidden;">
+                    <div id="lossMeterBar" style="height:100%; background:#dc2626; width:0%; transition:width 0.5s ease;"></div>
+                </div>
             </div>
 
             <!-- LIVE BOT STATUS GRID -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem;">
-                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
-                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">BOT STATUS</div>
-                    <div style="color:var(--green); font-weight:bold; margin-top:2px;" id="botStatusDisplay">🟢 AUTOPILOT ON</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.75rem;">
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">BOT ENGINE</div>
+                    <div style="color:var(--green); font-weight:bold; margin-top:1px;" id="botStatusDisplay">🟢 ACTIVE</div>
                 </div>
-                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
                     <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">ENVIRONMENT</div>
-                    <div style="color:var(--yellow); font-weight:bold; margin-top:2px;">TESTNET MODE</div>
+                    <div style="color:var(--yellow); font-weight:bold; margin-top:1px;">TESTNET MODE</div>
                 </div>
-                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
-                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">DAILY WIN / LOSS</div>
-                    <div style="font-weight:bold; margin-top:2px;"><span style="color:var(--green)" id="statusWinCount">0 WIN</span> / <span style="color:var(--red)" id="statusLossCount">0 LOSS</span></div>
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">TODAY'S SCORE</div>
+                    <div style="font-weight:bold; margin-top:1px;"><span style="color:var(--green)" id="statusWinCount">0 WIN</span> / <span style="color:var(--red)" id="statusLossCount">0 LOSS</span></div>
                 </div>
-                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
                     <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">DAILY NET PNL</div>
-                    <div style="font-weight:bold; margin-top:2px; color:var(--green);" id="statusDailyPnl">+$0.0000</div>
+                    <div style="font-weight:bold; margin-top:1px; color:var(--green);" id="statusDailyPnl">+$0.0000</div>
                 </div>
             </div>
 
@@ -621,8 +643,23 @@
         let activeChartTab = 1;
         let isBotActive = true;
         let countdownVal = 1.0;
-        let priceHistory = [];
         let globalTradesCache = [];
+        let selectedReportFilter = 'all'; // 'all', 'today', 'yesterday', '7days', 'month', 'custom'
+        let customReportDate = '';
+
+        function setReportDateFilter(filterVal) {
+            selectedReportFilter = filterVal;
+            if (filterVal !== 'custom') customReportDate = '';
+            if (lastReceivedTerminalData) renderRightFeed(lastReceivedTerminalData);
+        }
+
+        function onReportDateInputChange(dateVal) {
+            if (dateVal) {
+                customReportDate = dateVal;
+                selectedReportFilter = 'custom';
+                if (lastReceivedTerminalData) renderRightFeed(lastReceivedTerminalData);
+            }
+        }
         let newsCacheMap = {
             "ETH_USDT": [
                 { title: "Ethereum Layer-2 Volume Surge Signals Strong Institutional Accumulation", sentiment: "POSITIVE", score: 0.88, time: "2026-08-29 04:30 AM", url: "https://coindesk.com" },
@@ -1276,8 +1313,30 @@
                 sdp.innerText = (realDailyPnl >= 0 ? '+$' : '-$') + Math.abs(realDailyPnl).toFixed(4);
                 sdp.style.color = realDailyPnl >= 0 ? 'var(--green)' : 'var(--red)';
                 const bsd = document.getElementById('botStatusDisplay');
-                bsd.innerText = data.bot_active !== false ? '🟢 AUTOPILOT ON' : '🟡 PAUSED';
+                bsd.innerText = data.bot_active !== false ? '🟢 ACTIVE' : '🟡 PAUSED';
                 bsd.style.color = data.bot_active !== false ? 'var(--green)' : 'var(--yellow)';
+            }
+
+            // Update Target Progress & Loss Buffer Meters
+            const dailyTgt = parseFloat(data.daily_target || 2.0);
+            const dailyLossLim = parseFloat(data.daily_loss_limit || 3.0);
+            const tgtPct = Math.min(100, Math.max(0, (realDailyPnl / Math.max(dailyTgt, 0.01)) * 100));
+            const remainingToTgt = Math.max(0, dailyTgt - realDailyPnl);
+            if (document.getElementById('targetProgPct')) {
+                document.getElementById('targetProgPct').innerText = `${tgtPct.toFixed(1)}% ($${remainingToTgt.toFixed(2)} to go)`;
+                document.getElementById('targetProgBar').style.width = `${tgtPct}%`;
+            }
+            const currentLoss = realDailyPnl < 0 ? Math.abs(realDailyPnl) : 0.0;
+            const lossBuffer = Math.max(0, dailyLossLim - currentLoss);
+            const lossMeterPct = Math.min(100, Math.max(0, (currentLoss / Math.max(dailyLossLim, 0.01)) * 100));
+            if (document.getElementById('lossBufferText')) {
+                document.getElementById('lossBufferText').innerText = `$${lossBuffer.toFixed(2)} buffer left`;
+                document.getElementById('lossMeterBar').style.width = `${lossMeterPct}%`;
+            }
+            if (document.getElementById('botActivePill')) {
+                document.getElementById('botActivePill').innerText = data.bot_active !== false ? 'AUTOPILOT ON' : 'PAUSED';
+                document.getElementById('botActivePill').style.background = data.bot_active !== false ? '#052e16' : '#451a03';
+                document.getElementById('botActivePill').style.color = data.bot_active !== false ? '#4ade80' : '#f97316';
             }
 
 
@@ -1571,41 +1630,166 @@
             } else if (activeMainRightTab === 'report') {
                 document.getElementById('subFilterRow').style.display = 'none';
                 const timerStr = get24hSessionTimeRemainingStr();
-                const totalCount = globalTradesCache.length;
-                const profCount = globalTradesCache.filter(t => (t.pnl || 0) > 0).length;
-                const lossCount = globalTradesCache.filter(t => (t.pnl || 0) < 0).length;
-                const winRate = totalCount > 0 ? ((profCount / totalCount) * 100).toFixed(1) : "0.0";
-                // Use real backend daily_pnl (accumulated realized PnL from bot)
-                const dailyPnL = parseFloat(data.daily_pnl || 0);
-                const isProf = dailyPnL >= 0;
 
+                // Compute report trades according to selected calendar filter
+                const now = new Date();
+                const bdNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Dhaka" }));
+                const todayStr = bdNow.toISOString().split('T')[0];
+
+                let targetDateLabel = "ALL TIME (1 YEAR HISTORICAL ARCHIVE)";
+                let filteredReportTrades = globalTradesCache;
+
+                if (selectedReportFilter === 'today') {
+                    targetDateLabel = `TODAY (${todayStr}) — LIVE REAL-TIME`;
+                    filteredReportTrades = globalTradesCache.filter(t => {
+                        const d = (t.closed_at || t.created_at || '').substring(0, 10);
+                        return d === todayStr;
+                    });
+                } else if (selectedReportFilter === 'yesterday') {
+                    const yest = new Date(bdNow);
+                    yest.setDate(yest.getDate() - 1);
+                    const yestStr = yest.toISOString().split('T')[0];
+                    targetDateLabel = `YESTERDAY (${yestStr})`;
+                    filteredReportTrades = globalTradesCache.filter(t => {
+                        const d = (t.closed_at || t.created_at || '').substring(0, 10);
+                        return d === yestStr;
+                    });
+                } else if (selectedReportFilter === '7days') {
+                    const d7 = new Date(bdNow);
+                    d7.setDate(d7.getDate() - 7);
+                    const d7Str = d7.toISOString().split('T')[0];
+                    targetDateLabel = `LAST 7 DAYS (${d7Str} to ${todayStr})`;
+                    filteredReportTrades = globalTradesCache.filter(t => {
+                        const d = (t.closed_at || t.created_at || '').substring(0, 10);
+                        return d >= d7Str;
+                    });
+                } else if (selectedReportFilter === 'month') {
+                    const monthPrefix = todayStr.substring(0, 7);
+                    targetDateLabel = `CURRENT MONTH (${monthPrefix})`;
+                    filteredReportTrades = globalTradesCache.filter(t => {
+                        const d = (t.closed_at || t.created_at || '').substring(0, 10);
+                        return d.startsWith(monthPrefix);
+                    });
+                } else if (selectedReportFilter === 'custom' && customReportDate) {
+                    targetDateLabel = `SELECTED DATE: ${customReportDate}`;
+                    filteredReportTrades = globalTradesCache.filter(t => {
+                        const d = (t.closed_at || t.created_at || '').substring(0, 10);
+                        return d === customReportDate;
+                    });
+                }
+
+                const repTotal = filteredReportTrades.length;
+                const repWins = filteredReportTrades.filter(t => (parseFloat(t.pnl) || 0) > 0).length;
+                const repLosses = filteredReportTrades.filter(t => (parseFloat(t.pnl) || 0) < 0).length;
+                const repWinRate = repTotal > 0 ? ((repWins / repTotal) * 100).toFixed(1) : "0.0";
+                
+                let repNetPnl = filteredReportTrades.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0);
+                if (selectedReportFilter === 'today' && repTotal === 0) {
+                    repNetPnl = parseFloat(data.daily_pnl || 0);
+                }
+                const isRepProf = repNetPnl >= 0;
+
+                const makeActiveBtn = (f) => selectedReportFilter === f 
+                    ? 'background:#0284c7; color:#fff; border:1px solid #38bdf8;' 
+                    : 'background:#090d16; color:#94a3b8; border:1px solid #1e293b;';
 
                 feed.innerHTML = `
-                    <div style="padding: 10px; font-size: 0.8rem;">
-                        <div style="background: #091322; border: 1px solid #1e3a8a; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: var(--cyan-accent); font-weight: bold; font-size: 0.85rem;">⏱️ TODAY'S 24-HOUR TRADING SESSION COUNTDOWN</span>
-                                <span style="background: #0284c7; color: #fff; font-size: 0.8rem; padding: 3px 10px; border-radius: 4px; font-weight: bold;" id="sessionCountdownBox">${timerStr}</span>
+                    <div style="padding: 6px; font-size: 0.8rem;">
+                        <!-- CALENDAR & DATE SELECTOR BAR -->
+                        <div style="background:#091322; border:1.5px solid #0284c7; padding:10px; border-radius:6px; margin-bottom:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                                <div style="font-weight:bold; color:var(--cyan-accent); font-size:0.82rem; display:flex; align-items:center; gap:6px;">
+                                    <span>📅 HISTORICAL AUDIT CALENDAR & DATE PICKER</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <span style="font-size:0.7rem; color:#94a3b8; font-weight:bold;">PICK DATE:</span>
+                                    <input type="date" value="${customReportDate}" onchange="onReportDateInputChange(this.value)" style="background:#0b111e; border:1.5px solid #0284c7; color:#fff; padding:4px 8px; border-radius:4px; font-size:0.75rem; font-weight:bold; outline:none; cursor:pointer;">
+                                </div>
                             </div>
-                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">
-                                Resets automatically at 12:00 AM Bangladesh Standard Time (BST GMT+6)
+                            <!-- Quick Filter Buttons -->
+                            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                                <button onclick="setReportDateFilter('all')" style="${makeActiveBtn('all')} padding:5px 10px; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer;">🌐 ALL (1 YEAR)</button>
+                                <button onclick="setReportDateFilter('today')" style="${makeActiveBtn('today')} padding:5px 10px; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer;">⚡ LIVE TODAY</button>
+                                <button onclick="setReportDateFilter('yesterday')" style="${makeActiveBtn('yesterday')} padding:5px 10px; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer;">📅 YESTERDAY</button>
+                                <button onclick="setReportDateFilter('7days')" style="${makeActiveBtn('7days')} padding:5px 10px; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer;">📅 LAST 7 DAYS</button>
+                                <button onclick="setReportDateFilter('month')" style="${makeActiveBtn('month')} padding:5px 10px; border-radius:4px; font-size:0.7rem; font-weight:bold; cursor:pointer;">📅 THIS MONTH</button>
                             </div>
                         </div>
 
-                        <div style="background: #090d16; padding: 14px; border-radius: 6px; border: 1px solid #1e293b; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                            <div>TODAY'S TOTAL TRADES: <b style="color:#fff;">${totalCount}</b></div>
-                            <div>WIN RATE: <b style="color: var(--green);">${winRate}%</b></div>
-                            <div>PROFIT TRADES: <b style="color: var(--green);">${profCount} Wins</b></div>
-                            <div>LOSS TRADES: <b style="color: var(--red);">${lossCount} Losses</b></div>
-                            <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 10px; margin-top: 4px;">
-                                <div style="color: var(--text-muted); font-size: 0.75rem;">TODAY'S 24H REALIZED NET P&L</div>
-                                <div style="font-size: 1.6rem; font-weight: bold; color: ${isProf ? 'var(--green)' : 'var(--red)'};">
-                                    ${isProf ? '+$' : '-$'}${Math.abs(dailyPnL).toFixed(2)} USD
+                        <!-- 24H SESSION TIMER -->
+                        <div style="background: #090d16; border: 1px solid #1e3a8a; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#94a3b8; font-size:0.72rem; font-weight:bold;">⏱️ 24H TRADING SESSION COUNTDOWN:</span>
+                            <span style="background: #0284c7; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: bold;" id="sessionCountdownBox">${timerStr}</span>
+                        </div>
+
+                        <!-- SELECTED DATE SUMMARY METRICS -->
+                        <div style="background: #090d16; padding: 12px; border-radius: 6px; border: 1px solid #1e293b; margin-bottom:10px;">
+                            <div style="font-size:0.75rem; color:var(--cyan-accent); font-weight:bold; margin-bottom:8px; border-bottom:1px solid #1e293b; padding-bottom:4px;">
+                                📊 ${targetDateLabel}
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size:0.78rem;">
+                                <div>TOTAL TRADES: <b style="color:#fff;">${repTotal}</b></div>
+                                <div>WIN RATE: <b style="color: var(--green); font-weight:bold;">${repWinRate}%</b></div>
+                                <div>PROFIT TRADES: <b style="color: var(--green); font-weight:bold;">${repWins} Wins</b></div>
+                                <div>LOSS TRADES: <b style="color: var(--red); font-weight:bold;">${repLosses} Losses</b></div>
+                                <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 8px; margin-top: 2px;">
+                                    <div style="color: var(--text-muted); font-size: 0.7rem; font-weight:bold;">REALIZED NET PROFIT / LOSS:</div>
+                                    <div style="font-size: 1.5rem; font-weight: bold; color: ${isRepProf ? 'var(--green)' : 'var(--red)'}; margin-top:2px;">
+                                        ${isRepProf ? '+$' : '-$'}${Math.abs(repNetPnl).toFixed(4)} USD
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- BOT EXECUTION RULES PROTOCOL -->
+                        <div style="background: #050a14; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size:0.72rem;">
+                            <div style="color:var(--cyan-accent); font-weight:bold; margin-bottom:4px;">🤖 BOT ENGINE EXECUTION LOGIC & SAFETY LIMITS:</div>
+                            <div style="color:#94a3b8; line-height:1.5;">
+                                • <b>Fixed Trade Size:</b> $5.00 USD (Risk-Controlled Capital)<br>
+                                • <b>Daily Profit Target:</b> $2.00 USD (Auto Level Upgrade $5→$6→$7→$8)<br>
+                                • <b>Daily Stop Loss Limit:</b> -$3.00 USD (Bot Auto-Pauses to Protect Balance)<br>
+                                • <b>Signals:</b> 10-Point Technical & AI Audit across all 7 perpetual markets
+                            </div>
+                        </div>
+
+                        <!-- DETAILED TRADES FOR THIS DATE -->
+                        <div style="font-weight:bold; color:var(--text-muted); font-size:0.75rem; margin-bottom:6px;">
+                            📋 TRADE EXECUTION LOGS FOR THIS SELECTION (${repTotal} TRADES):
+                        </div>
+                        ${filteredReportTrades.length > 0 ? filteredReportTrades.map(t => {
+                            const pVal = parseFloat(t.pnl || 0);
+                            const isWin = (t.status || '').toUpperCase() === 'WIN' || pVal > 0;
+                            const isLoss = (t.status || '').toUpperCase() === 'LOSS' || pVal < 0;
+                            const isOp = t.status === 'OPEN';
+                            const pnlColor = isOp ? '#38bdf8' : (isWin ? '#4ade80' : (isLoss ? '#f87171' : '#94a3b8'));
+                            const badge = isOp ? '<span style="background:#052e16;color:#4ade80;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;">🟢 OPEN</span>'
+                                        : (isWin ? '<span style="background:#052e16;color:#4ade80;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;">✅ WIN</span>'
+                                        : (isLoss ? '<span style="background:#450a0a;color:#f87171;padding:1px 6px;border-radius:3px;font-size:0.65rem;font-weight:bold;">❌ LOSS</span>'
+                                        : '<span style="background:#1e293b;color:#94a3b8;padding:1px 6px;border-radius:3px;font-size:0.65rem;">📋 FILLED</span>'));
+                            return `
+                                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px 10px; margin-bottom:6px; font-size:0.72rem; border-left:3px solid ${isWin?'#4ade80':(isLoss?'#f87171':'#0284c7')};">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+                                        <b style="color:#fff;">${t.side === 'BUY' ? '⚡ BUY' : '🔴 SELL'} ${t.symbol_en || t.symbol}</b>
+                                        ${badge}
+                                    </div>
+                                    <div style="color:#94a3b8; font-size:0.68rem; margin-bottom:2px;">
+                                        📅 ${t.created_at || ''} ${t.closed_at && t.closed_at !== t.created_at ? '→ ' + t.closed_at : ''}
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; font-size:0.72rem;">
+                                        <span style="color:#cbd5e1;">Entry: $${parseFloat(t.entry_price||0).toFixed(2)} | Size: $5.00</span>
+                                        <b style="color:${pnlColor}; font-size:0.78rem;">${isOp ? 'LIVE PnL: ' : (isWin?'+$':'-$')}${Math.abs(pVal).toFixed(4)} USD</b>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('') : `
+                            <div style="background:#090d16; border:1px dashed #1e293b; border-radius:6px; padding:20px; text-align:center; color:#64748b; font-size:0.75rem;">
+                                No trades recorded for ${targetDateLabel}.<br>
+                                <span style="color:#0284c7; font-weight:bold; cursor:pointer; margin-top:4px; display:inline-block;" onclick="setReportDateFilter('all')">👉 Click here to view ALL TIME (1 Year) archive</span>
+                            </div>
+                        `}
                     </div>
                 `;
+
             } else if (activeMainRightTab === 'db') {
                 document.getElementById('subFilterRow').style.display = 'none';
                 let hb = data.heartbeat_logs || [];

@@ -1678,21 +1678,19 @@ class ReusableHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
 def keep_render_alive():
-    """Background thread that continuously pings self & Render HTTP endpoints every 2 seconds to guarantee 24/7 zero-sleep execution."""
-    time.sleep(2)
-    logger.info("Initializing 24/7 High-Speed Anti-Sleep Self-Trigger Engine (Pinging every 2s)...")
-    ping_urls = [
-        "https://gateio-trading-bot-api.onrender.com/api/stats",
-        f"http://127.0.0.1:{HEALTH_SERVER_PORT}/api/stats",
-        f"http://192.168.2.102:{HEALTH_SERVER_PORT}/api/stats"
-    ]
+    """Ping external Render URL every 5 min to prevent free-tier sleep.
+    The 2-second cache loop handles local liveness; this handles Render's HTTP inactivity timer."""
+    render_ext = os.environ.get("RENDER_EXTERNAL_URL", "https://gateio-trading-bot-api.onrender.com")
+    time.sleep(30)  # wait for server to fully start
+    logger.info("[KEEPALIVE] Anti-sleep pinger started (every 5 min external ping).")
     while True:
-        for url in ping_urls:
-            try:
-                requests.get(url, timeout=2)
-            except Exception:
-                pass
-        time.sleep(2)
+        try:
+            requests.get(render_ext + "/api/stats", timeout=10)
+            logger.debug("[KEEPALIVE] External ping OK — Render stays awake.")
+        except Exception as e:
+            logger.warning(f"[KEEPALIVE] Ping failed: {e}")
+        time.sleep(300)  # ping every 5 minutes
+
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):

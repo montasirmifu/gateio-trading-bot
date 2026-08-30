@@ -94,7 +94,10 @@
         
         .trade-card { background: #090d16; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; position: relative; cursor: pointer; transition: 0.2s; }
         .trade-card:hover { border-color: var(--cyan-accent); }
-        .trade-card.border-green { border-left: 4px solid var(--green); }
+        .trade-card.border-green  { border-left: 4px solid var(--green); }
+        .trade-card.border-red    { border-left: 4px solid var(--red); }
+        .trade-card.border-yellow { border-left: 4px solid var(--yellow); }
+
         .trade-card.border-red { border-left: 4px solid var(--red); }
 
         .tc-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px; }
@@ -1414,28 +1417,68 @@
                         const partialTag = t.partial_done ? `<span style="background:#1a3a1a;color:#86efac;border:1px solid #16a34a;font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">50% BOOKED</span>` : '';
                         const trailTag  = (isOpen && pnlVal/tradeSz*100 >= 2.0) ? `<span style="background:#1a1a3a;color:#a5b4fc;border:1px solid #4f46e5;font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">TRAIL ON</span>` : '';
 
+                        // Determine real status from backend status field
+                        const backendStatus = (t.status || '').toUpperCase();
+                        const isWin  = backendStatus === 'WIN'  || (backendStatus !== 'LOSS' && backendStatus !== 'OPEN' && backendStatus !== 'FILLED' && backendStatus !== 'RUNNING' && pnlVal > 0);
+                        const isLoss = backendStatus === 'LOSS' || (backendStatus !== 'WIN'  && backendStatus !== 'OPEN' && backendStatus !== 'FILLED' && backendStatus !== 'RUNNING' && pnlVal < 0);
+
+                        // Card border color: GREEN=WIN/OPEN-profit, RED=LOSS, YELLOW=FILLED
+                        const cardBorderClass = isOpen ? (pnlVal >= 0 ? 'border-green' : 'border-red')
+                                              : isWin  ? 'border-green'
+                                              : isLoss ? 'border-red'
+                                              : 'border-yellow';
+
+                        // Status badge
+                        let statusBadge = '';
+                        if (isOpen) {
+                            statusBadge = `<span style="background:#052e16;color:#4ade80;border:1px solid #16a34a;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:bold;">🟢 RUNNING</span>`;
+                        } else if (isWin || pnlVal > 0) {
+                            statusBadge = `<span style="background:#052e16;color:#4ade80;border:1px solid #16a34a;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:bold;">✅ WIN</span>`;
+                        } else if (isLoss || pnlVal < 0) {
+                            statusBadge = `<span style="background:#2d0a0a;color:#f87171;border:1px solid #991b1b;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:bold;">❌ LOSS</span>`;
+                        } else {
+                            statusBadge = `<span style="background:#1c1c2e;color:#94a3b8;border:1px solid #334155;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:bold;">📋 FILLED</span>`;
+                        }
+
+                        // PnL display
+                        let statusText = '';
+                        if (isOpen && livePrice > 0 && entryP > 0) {
+                            statusText = `<b style="color:${pnlVal>=0?'#4ade80':'#f87171'}">LIVE: ${pnlVal>=0?'+':'-'}$${Math.abs(pnlVal).toFixed(4)} (${pnlVal>=0?'+':'-'}${profPct}%)</b>`;
+                        } else if (pnlVal !== 0) {
+                            statusText = `<b style="color:${pnlVal>0?'#4ade80':'#f87171'}">${pnlVal>0?'PROFIT: +$':'LOSS: -$'}${Math.abs(pnlVal).toFixed(4)}</b>`;
+                        } else {
+                            statusText = `<span style="color:#94a3b8">FILLED @ $${parseFloat(t.exit_price||entryP).toFixed(2)}</span>`;
+                        }
+
+                        const closedAtStr = t.closed_at && t.closed_at !== t.created_at ? `<span style="color:#64748b;font-size:.6rem"> → Closed: ${t.closed_at}</span>` : '';
+
                         return `
-                            <div class="trade-card ${isOpen ? 'border-green' : isProf ? 'border-green' : 'border-red'}" onclick="openTradeDetailsModal(${idx})">
+                            <div class="trade-card ${cardBorderClass}" onclick="openTradeDetailsModal(${idx})" style="border-left-width:4px;">
                                 <div class="tc-header">
                                     <span class="tc-title">${isBuy ? '⚡ BUY' : '🔴 SELL'} ${enName}${partialTag}${trailTag}</span>
-                                    <span style="font-size:.65rem;color:#64748b">${t.created_at || ''}</span>
+                                    <span>${statusBadge}</span>
+                                </div>
+                                <div style="font-size:.62rem;color:#64748b;margin-bottom:4px;">
+                                    📅 ${t.created_at || ''}${closedAtStr}
                                 </div>
                                 <div class="tc-details">
-                                    <span>Entry: <b>$${entryP.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</b> | Size: <b>$${tradeSz.toFixed(2)}</b></span>
-                                    <span class="${isOpen ? (isProf?'tc-pnl-green':'tc-pnl-red') : (isProf?'tc-pnl-green':'tc-pnl-red')}">${statusText}</span>
+                                    <span>Entry: <b>$${entryP.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</b>${t.exit_price && parseFloat(t.exit_price) !== entryP ? ` → Exit: <b>$${parseFloat(t.exit_price).toFixed(2)}</b>` : ''} | Size: <b>$5.00</b></span>
+                                    <span class="${pnlVal>=0?'tc-pnl-green':'tc-pnl-red'}">${statusText}</span>
                                 </div>
                                 <div class="tpsl-box-row">
-                                    <div class="tpsl-box tp-box">TP: $${tpVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
-                                    <div class="tpsl-box sl-box">SL: $${slVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
+                                    <div class="tpsl-box tp-box">AUTO TP: $${tpVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
+                                    <div class="tpsl-box sl-box">AUTO SL: $${slVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
                                 </div>
                                 <div style="margin-top:6px;border-top:1px dashed #1e293b;padding-top:4px;">
                                     <a href="${t.gateio_link || ('https://testnet.gate.com/futures/USDT/' + (t.symbol || 'BTC_USDT') + '?fromlink=www.gate.com&uid=59787607')}" target="_blank" style="color:var(--cyan-accent);font-size:.68rem;font-weight:bold;text-decoration:underline;" onclick="event.stopPropagation();">
-                                        🔗 VIEW ON GATE.IO TESTNET ↗
+                                        🔗 VERIFY DIRECTLY ON GATE.IO TESTNET (ORDER ID: #${t.order_id || 'N/A'}) ↗
                                     </a>
                                 </div>
                             </div>
                         `;
                     }).join('');
+
+
 
                 } else {
                     feed.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">Scanning perpetual market for 100% real-time signal execution...</div>';

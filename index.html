@@ -364,40 +364,42 @@
         </div>
 
         <div class="cap-card" id="tunerCard">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div class="cap-title" style="color: var(--cyan-accent); font-weight:bold;">⚡ DYNAMIC PARAMETER TUNER</div>
-                <button type="button" onclick="toggleTunerMinimize()" style="background: #1e293b; color: var(--cyan-accent); border: 1px solid #334155; padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; cursor: pointer; font-weight: bold;" id="btnToggleTuner">− MINIMIZE</button>
+            <div class="cap-title" style="color: var(--cyan-accent); font-weight:bold; margin-bottom: 10px;">⚡ BOT ENGINE STATUS</div>
+
+            <!-- FIXED $5 LOCKED DISPLAY -->
+            <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                <div style="font-size: 1.8rem;">🔒</div>
+                <div style="flex: 1;">
+                    <div style="color: #4ade80; font-weight: bold; font-size: 1rem;">FIXED TRADE SIZE: $5.00 USD</div>
+                    <div style="color: #86efac; font-size: 0.7rem; margin-top: 4px;">Auto Staircase: $5 → $6 → $7 → $8 | Daily Stop Loss: $3 | Daily Target: $2</div>
+                </div>
+                <div style="background: #15803d; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; white-space: nowrap;">✅ $5 LOCKED</div>
             </div>
-            <!-- FIXED $5 TRADE SIZE NOTICE -->
-            <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
-                <div style="font-size: 1.3rem;">🔒</div>
-                <div>
-                    <div style="color: #4ade80; font-weight: bold; font-size: 0.8rem;">FIXED TRADE SIZE: $5.00 USD PER TRADE</div>
-                    <div style="color: #86efac; font-size: 0.65rem; margin-top: 2px;">Safe mode active — Max risk: $10 (2 trades × $5) | Daily loss stop: $3 | Daily target: $2</div>
+
+            <!-- LIVE BOT STATUS GRID -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem;">
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">BOT STATUS</div>
+                    <div style="color:var(--green); font-weight:bold; margin-top:2px;" id="botStatusDisplay">🟢 AUTOPILOT ON</div>
                 </div>
-                <div style="margin-left: auto; background: #15803d; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: bold;">✅ LOCKED</div>
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">ENVIRONMENT</div>
+                    <div style="color:var(--yellow); font-weight:bold; margin-top:2px;">TESTNET MODE</div>
+                </div>
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">DAILY WIN / LOSS</div>
+                    <div style="font-weight:bold; margin-top:2px;"><span style="color:var(--green)" id="statusWinCount">0 WIN</span> / <span style="color:var(--red)" id="statusLossCount">0 LOSS</span></div>
+                </div>
+                <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:8px;">
+                    <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">DAILY NET PNL</div>
+                    <div style="font-weight:bold; margin-top:2px; color:var(--green);" id="statusDailyPnl">+$0.0000</div>
+                </div>
             </div>
-            <form id="tunerForm" onsubmit="updateFullParameters(event)" class="tuner-grid-clean" style="transition: all 0.3s ease;">
-                <div style="grid-column: span 2; margin-bottom: 4px;">
-                    <div style="font-size: 0.65rem; color: var(--cyan-accent); font-weight: bold; margin-bottom: 4px;">⚡ 1-CLICK QUICK PRESET TRADE SIZE:</div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                        <button type="button" onclick="setQuickTradeSize(5)" style="background:#052e16; color:#4ade80; border:2px solid #16a34a; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">✅ $5</button>
-                        <button type="button" onclick="setQuickTradeSize(10)" style="background:#091322; color:#fff; border:1px solid #0284c7; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">$10</button>
-                        <button type="button" onclick="setQuickTradeSize(15)" style="background:#091322; color:#fff; border:1px solid #0284c7; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">$15</button>
-                        <button type="button" onclick="setQuickTradeSize(25)" style="background:#091322; color:#fff; border:1px solid #0284c7; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">$25</button>
-                        <button type="button" onclick="setQuickTradeSize(50)" style="background:#091322; color:#fff; border:1px solid #0284c7; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.7rem;">$50</button>
-                    </div>
-                </div>
-                <div class="tuner-group">
-                    <label>TRADE SIZE ($)</label>
-                    <input type="number" id="inTradeSize" value="5" step="1" style="border: 2px solid #16a34a; color: #4ade80; font-weight: bold;">
-                </div>
-                <div class="tuner-group">
-                    <label>DAILY TARGET PROFIT ($)</label>
-                    <input type="number" id="inDailyTarget" value="2" step="0.5">
-                </div>
-                <button type="submit" class="btn-update">⚡ SAVE & APPLY DIRECT TO DATABASE</button>
-            </form>
+
+            <!-- hidden inputs for compatibility -->
+            <input type="hidden" id="inTradeSize" value="5">
+            <input type="hidden" id="inDailyTarget" value="2">
+            <form id="tunerForm" onsubmit="updateFullParameters(event)" style="display:none;"></form>
         </div>
     </div>
 
@@ -1169,8 +1171,24 @@
             const pnlSign = realDailyPnl >= 0 ? '+$' : '-$';
             document.getElementById('dailyPnL').innerText = pnlSign + Math.abs(realDailyPnl).toFixed(4);
             document.getElementById('dailyPnL').style.color = realDailyPnl >= 0 ? 'var(--green)' : 'var(--red)';
-            document.getElementById('tradeSizeSub').innerText = '$' + currentTradeSize.toFixed(2) + ' USD' +
+            document.getElementById('tradeSizeSub').innerText = '$5.00 USD (FIXED)' +
                 (data.safe_mode ? ' [SAFE MODE]' : '');
+
+            // Update Bot Engine Status card
+            const allTrades = (data.last_trades || []).concat(data.open_trades || []);
+            const winCount  = allTrades.filter(t => (parseFloat(t.pnl) || 0) > 0).length;
+            const lossCount = allTrades.filter(t => (parseFloat(t.pnl) || 0) < 0).length;
+            if (document.getElementById('statusWinCount')) {
+                document.getElementById('statusWinCount').innerText = winCount + ' WIN';
+                document.getElementById('statusLossCount').innerText = lossCount + ' LOSS';
+                const sdp = document.getElementById('statusDailyPnl');
+                sdp.innerText = (realDailyPnl >= 0 ? '+$' : '-$') + Math.abs(realDailyPnl).toFixed(4);
+                sdp.style.color = realDailyPnl >= 0 ? 'var(--green)' : 'var(--red)';
+                const bsd = document.getElementById('botStatusDisplay');
+                bsd.innerText = data.bot_active !== false ? '🟢 AUTOPILOT ON' : '🟡 PAUSED';
+                bsd.style.color = data.bot_active !== false ? 'var(--green)' : 'var(--yellow)';
+            }
+
 
             // Staircase progress display
             const stairLevel = parseInt(data.staircase_level || 0);

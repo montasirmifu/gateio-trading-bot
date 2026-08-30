@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PURE PYTHON ALGORITHMIC TERMINAL — GATE.IO LIVE v2.1</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>PURE PYTHON ALGORITHMIC TERMINAL — GATE.IO LIVE v3.0</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2307090e'/%3E%3Cpath d='M20 75 L40 50 L60 60 L85 25' stroke='%2300e676' stroke-width='10' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Cpath d='M50 15 L65 38 L52 38 L60 62 L38 45 L50 45 Z' fill='%2300f2fe'/%3E%3C/svg%3E">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
     <style>
         :root {
             --bg-dark: #07090e;
@@ -1141,10 +1145,67 @@
             data.open_trades = realOpenTrades;
             data.last_trades = realLastTrades;
 
+            // ====== PRIORITY: Render asset matrix and trades FIRST ======
+            // (before any badge card / chart code that might throw)
+            try {
+                const matrixBodyEarly = document.getElementById('fullAssetsTableBody');
+                if (matrixBodyEarly && data.assets && Object.keys(data.assets).length > 0) {
+                    matrixBodyEarly.innerHTML = Object.entries(data.assets).map(([sym, ast]) => {
+                        const rsi1m  = parseFloat(ast.rsi_1m  || ast.rsi  || 50);
+                        const rsi5m  = parseFloat(ast.rsi_5m  || 50);
+                        const rsi15m = parseFloat(ast.rsi_15m || 50);
+                        const macdV  = parseFloat(ast.macd_1m || ast.macd || 0);
+                        const sigV   = parseFloat(ast.signal_1m || ast.signal || 0);
+                        const volR   = parseFloat(ast.vol_ratio || 1);
+                        const obR    = parseFloat(ast.ob_ratio  || 1);
+                        const buyB   = parseInt(ast.buy_badges  || ast.matched_badges || 0);
+                        const sellB  = parseInt(ast.sell_badges || 0);
+                        const sent   = ast.sentiment || 'NEUTRAL';
+                        const price  = parseFloat(ast.price || 0);
+                        const inTrade = realOpenTrades.some(t => t.symbol === sym);
+                        const rsi1mC  = rsi1m < 30 ? '#4ade80' : rsi1m  > 70 ? '#f87171' : '#94a3b8';
+                        const rsi5mC  = rsi5m < 32 ? '#4ade80' : rsi5m  > 68 ? '#f87171' : '#94a3b8';
+                        const rsi15mC = rsi15m< 35 ? '#4ade80' : rsi15m > 65 ? '#f87171' : '#94a3b8';
+                        const macdC   = macdV > sigV ? '#4ade80' : '#f87171';
+                        const volC    = volR >= 1.5 ? '#fbbf24' : '#94a3b8';
+                        const obC     = obR >= 1.2 ? '#4ade80' : obR <= 0.8 ? '#f87171' : '#94a3b8';
+                        const sentC   = sent === 'POSITIVE' ? '#4ade80' : sent === 'NEGATIVE' ? '#f87171' : '#94a3b8';
+                        const tradeStatus = inTrade
+                            ? `<span style="color:#fbbf24;font-weight:bold;font-size:.65rem">🔴 IN TRADE</span>`
+                            : `<span style="color:#4ade80;font-size:.65rem">✅ WATCHING</span>`;
+                        return `<tr style="${sym === currentSymbol ? 'background:#162032;' : ''}border-bottom:1px solid #1e3a5f;">
+                            <td><b style="color:#00d4ff">${sym.replace('_USDT','')}</b></td>
+                            <td style="font-weight:bold">$${price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</td>
+                            <td style="color:${rsi1mC};font-weight:bold">${rsi1m.toFixed(1)}</td>
+                            <td style="color:${rsi5mC};font-weight:bold">${rsi5m.toFixed(1)}</td>
+                            <td style="color:${rsi15mC};font-weight:bold">${rsi15m.toFixed(1)}</td>
+                            <td style="color:${macdC}">${macdV.toFixed(3)}</td>
+                            <td style="color:${volC}">${volR.toFixed(2)}x</td>
+                            <td style="color:${obC}">${obR.toFixed(3)}</td>
+                            <td style="color:${sentC}">${sent}</td>
+                            <td>
+                                <span style="background:#052e16;color:#4ade80;border:1px solid #16a34a;padding:1px 5px;border-radius:4px;font-size:.65rem;font-weight:bold">${buyB}/10</span>
+                                <span style="background:#450a0a;color:#f87171;border:1px solid #dc2626;padding:1px 5px;border-radius:4px;font-size:.65rem;font-weight:bold;margin-left:3px">${sellB}/10</span>
+                            </td>
+                            <td>${tradeStatus}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            } catch(assetErr) { console.error('Asset matrix error:', assetErr); }
 
-            if (document.getElementById('topTradeHeaderCount')) {
-                document.getElementById('topTradeHeaderCount').innerText = globalTradesCache.length;
-            }
+            // PRIORITY: Set trade counts immediately
+            try {
+                const openCount = realOpenTrades.length;
+                const profCount = globalTradesCache.filter(t => (parseFloat(t.pnl)||0) > 0).length;
+                const lossCount2 = globalTradesCache.filter(t => (parseFloat(t.pnl)||0) < 0).length;
+                if (document.getElementById('topTradeHeaderCount')) document.getElementById('topTradeHeaderCount').innerText = globalTradesCache.length;
+                if (document.getElementById('subCountAll'))  document.getElementById('subCountAll').innerText  = globalTradesCache.length;
+                if (document.getElementById('subCountOpen')) document.getElementById('subCountOpen').innerText = openCount;
+                if (document.getElementById('subCountProf')) document.getElementById('subCountProf').innerText = profCount;
+                if (document.getElementById('subCountLoss')) document.getElementById('subCountLoss').innerText = lossCount2;
+            } catch(cntErr) { console.error('Count error:', cntErr); }
+            // ====== END PRIORITY ======
+
 
             isBotActive = data.bot_active !== false;
             const badge = document.getElementById('botToggleBadge');

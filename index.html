@@ -1033,62 +1033,58 @@
             try {
                 let data = null;
                 const ts = Date.now();
-                const endpoints = [
-                    RENDER_BACKEND_URL + '/api/stats?t=' + ts,
-                    window.location.origin + '/api/stats?t=' + ts,
-                    'http://localhost:10000/api/stats?t=' + ts
-                ];
-
-                // Show connecting status in asset table and trades
-                if (!firstFetchDone) {
-                    const matEl = document.getElementById('fullAssetsTableBody');
-                    if (matEl) matEl.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#0284c7;padding:14px;font-weight:bold;">🔄 Waking up Render server... (30-60s first load)</td></tr>';
-                    const feedEl = document.getElementById('tradesFeed');
-                    if (feedEl) feedEl.innerHTML = '<div style="text-align:center;color:#0284c7;padding:20px;font-weight:bold;">🔄 Connecting to Gate.io backend...<br><span style="font-size:.75rem;color:#64748b">Render free tier wakes in ~30s. Auto-refreshing every 2s...</span></div>';
-                }
-
-
-                for (const ep of endpoints) {
+                const primaryUrl = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/stats?t=' + ts;
+                
+                try {
+                    const timeout = firstFetchDone ? 3000 : 30000;
+                    const res = await fetch(primaryUrl, { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
+                    if (res.ok) {
+                        const parsed = await res.json();
+                        if (parsed && parsed.status === "ONLINE") {
+                            data = parsed;
+                            firstFetchDone = true;
+                            renderAwake = true;
+                        }
+                    }
+                } catch(e) {
+                    // Fallback to secondary if primary failed
                     try {
-                        const timeout = firstFetchDone ? 8000 : 55000; // 55s for first call, 8s after
-                        const res = await fetch(ep, { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
-                        if (res.ok) {
-                            const parsed = await res.json();
-                            if (parsed && parsed.status === "ONLINE") {
-                                data = parsed;
-                                firstFetchDone = true;
-                                renderAwake = true;
-                                break;
+                        const fallbackUrl = RENDER_BACKEND_URL + '/api/stats?t=' + ts;
+                        if (fallbackUrl !== primaryUrl) {
+                            const res2 = await fetch(fallbackUrl, { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+                            if (res2.ok) {
+                                const parsed2 = await res2.json();
+                                if (parsed2 && parsed2.status === "ONLINE") {
+                                    data = parsed2;
+                                    firstFetchDone = true;
+                                    renderAwake = true;
+                                }
                             }
                         }
-                    } catch(e) {}
+                    } catch(e2) {}
                 }
-
 
                 if (!data && lastReceivedTerminalData) {
                     data = lastReceivedTerminalData;
                 }
 
                 if (!data) {
-                    data = { status: "ONLINE", env_mode: "TESTNET", bot_active: true, trade_usd_size: 10.0, daily_target: 5.0, assets: {}, open_trades: [], last_trades: [], api_logs: [] };
+                    data = { status: "ONLINE", env_mode: "TESTNET", bot_active: true, trade_usd_size: 4.0, daily_target: 5.0, assets: {}, open_trades: [], last_trades: [], api_logs: [] };
                 }
 
-                // ALWAYS use live Gate.io account data (backend has real signed API data now)
-                if (liveAccountRaw && parseFloat(liveAccountRaw.cross_margin_balance) > 0) {
-                    data.gateio_account_raw = liveAccountRaw;
-                } else if (data.gateio_account_raw && parseFloat(data.gateio_account_raw.cross_margin_balance) > 0) {
-                    liveAccountRaw = data.gateio_account_raw; // backend returned real data
+                // ALWAYS use fresh live Gate.io account data directly from incoming payload
+                if (data.gateio_account_raw && parseFloat(data.gateio_account_raw.cross_margin_balance) > 0) {
+                    liveAccountRaw = data.gateio_account_raw;
                     updateBalanceUI(
                         parseFloat(data.gateio_account_raw.cross_margin_balance),
-                        parseFloat(data.gateio_account_raw.total || 999.95),
+                        parseFloat(data.gateio_account_raw.total || data.total_balance || 1000.0),
                         parseFloat(data.gateio_account_raw.cross_unrealised_pnl || 0),
-                        parseFloat(data.gateio_account_raw.maintenance_margin || 0.23)
+                        parseFloat(data.gateio_account_raw.maintenance_margin || 0)
                     );
                 }
 
                 // Merge assets: backend signals + live prices from tickers
                 if (data.assets && Object.keys(data.assets).length > 0) {
-                    // Inject live prices into backend signal data
                     for (const sym of Object.keys(data.assets)) {
                         if (liveTickerMap[sym]) {
                             data.assets[sym].price = parseFloat(liveTickerMap[sym].last) || data.assets[sym].price;
@@ -1099,22 +1095,15 @@
                     data.assets = latestAssetSnapshot;
                 }
 
-                // USE REAL BACKEND DATA FOR ALL 7 ASSETS — no fake filter
-                // Open trades: ALL symbols, not just ETH
+                // Open trades & last trades
                 data.open_trades = (data.open_trades || []).filter(t => t && t.symbol);
                 data.last_trades  = (data.last_trades  || []).filter(t => t && t.symbol);
 
-
-                // Update live entry for any open trade
                 if (data.open_trades.length > 0) {
                     window._openTradeEntry = data.open_trades[0].entry_price;
                 }
 
                 if (data.api_logs) latestGateIoApiLogs = data.api_logs;
-
-                // Always use locked $5 trade size from backend, not localStorage override
-                data.trade_usd_size = data.trade_usd_size || 5.0;
-
 
                 lastReceivedTerminalData = data;
                 renderTerminal(data);

@@ -217,6 +217,7 @@
             .asset-select { padding: 8px 12px !important; font-size: 0.85rem !important; width: 100% !important; }
             .trade-card { padding: 12px !important; margin-bottom: 6px !important; }
         }
+        .chart-tooltip { position: absolute; pointer-events: none; z-index: 100; background: #0c1019; border: 1px solid #0284c7; padding: 6px 10px; border-radius: 4px; font-size: 0.72rem; color: #fff; display: none; }
     </style>
 </head>
 <body>
@@ -248,7 +249,7 @@
     </div>
 
     <div class="direct-bar">
-        <div id="keyNotice" style="color: var(--yellow); font-weight: bold;">100% REAL-TIME LIVE MARKET DATA ACTIVE • RENDER BACKEND API CONNECTED</div>
+        <div id="keyNotice" style="color: var(--yellow); font-weight: bold;">REAL-TIME MARKET DATA • RENDER BACKEND API CONNECTED</div>
         <div class="portal-links">
             <span class="portal-link" onclick="openGateIoBalanceModal()">📊 GATE.IO BALANCES (REAL-TIME API VERIFIED)</span>
             <span class="portal-link" onclick="openGateIoBalanceModal()">🗄️ SUPABASE POSTGRES TRADES TABLE</span>
@@ -318,7 +319,7 @@
                 <span>🏦 GATE.IO DIRECT REAL-TIME BROKER ASSETS</span>
                 <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal;">(LIVE API 1:1 VERIFIED)</span>
             </div>
-            <span style="background: #052e16; color: #4ade80; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; border: 1px solid #166534;">
+            <span id="liveDataBadge" style="background: #052e16; color: #4ade80; padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; border: 1px solid #166534;">
                 ✅ GATE.IO TESTNET CONNECTED (UID: 59787607)
             </span>
         </div>
@@ -354,7 +355,7 @@
             <div class="cap-sub" style="line-height: 1.6; margin-top: 4px; font-size: 0.75rem;">
                 <span style="color: #00e676; font-weight: bold;">● USED IN TRADES: <span id="usedCapVal">$15.00</span> (<span id="usedCapPct">1.5%</span>)</span> | 
                 <span style="color: #00f2fe; font-weight: bold;">● REMAINING TRADING LIMIT: <span id="remCapVal">$385.00</span> (<span id="remCapPct">38.5%</span>)</span><br>
-                <span style="color: #94a3b8;">🔒 SAFE VAULT RESERVE (60% PROTECTED): <b id="safeCapVal" style="color:#fff;">$600.00</b></span>
+                <span style="color: #94a3b8;">🔒 SAFE VAULT RESERVE (60% RESERVED): <b id="safeCapVal" style="color:#fff;">$600.00</b></span>
             </div>
             <div class="progress-container" style="display: flex; height: 8px; background: #090d16; border-radius: 4px; overflow: hidden; margin-top: 8px; border: 1px solid #1e293b;">
                 <div id="barUsed" style="width: 1.5%; background: var(--green); height: 100%;" title="Used Margin in Active Trades"></div>
@@ -367,7 +368,7 @@
             <div class="cap-title">REALIZED DAILY NET PNL</div>
             <div class="cap-val" id="dailyPnL">+$0.00</div>
             <div class="cap-sub">Active Trade Size: <span id="tradeSizeSub">$10.00 USD</span></div>
-            <div class="progress-container"><div class="progress-fill" id="pnlProgress" style="background: var(--green); width: 85%;"></div></div>
+            <div class="progress-container"><div class="progress-fill" id="pnlProgress" style="background: var(--green); width: 0%;"></div></div>
         </div>
 
         <div class="cap-card" id="tunerCard">
@@ -380,25 +381,25 @@
             <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                 <div style="font-size: 1.5rem;">🔒</div>
                 <div style="flex: 1;">
-                    <div style="color: #4ade80; font-weight: bold; font-size: 0.9rem;">FIXED $5.00 USD / TRADE (LOCKED)</div>
-                    <div style="color: #86efac; font-size: 0.68rem; margin-top: 2px;">Daily Stop-Loss: -$3.00 | Target: $2.00 | Auto-Pauses on Limit</div>
+                    <div style="color: #4ade80; font-weight: bold; font-size: 0.9rem;">FIXED $4.00 USD / TRADE (LOCKED)</div>
+                    <div style="color: #86efac; font-size: 0.68rem; margin-top: 2px;">Daily Stop-Loss: -$4.00 | Target: $3.00 | Auto-Pauses on Limit</div>
                 </div>
-                <div style="background: #15803d; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: bold; white-space: nowrap;">100% PROTECTED</div>
+                <div style="background: #1e293b; color: #94a3b8; padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: bold; white-space: nowrap;">RISK MANAGED</div>
             </div>
 
             <!-- TARGET PROGRESS & LOSS METERS -->
             <div style="background:#090d16; border:1px solid #1e293b; border-radius:6px; padding:8px 10px; margin-bottom:8px;">
                 <div style="display:flex; justify-content:space-between; font-size:0.7rem; font-weight:bold; margin-bottom:3px;">
-                    <span style="color:#38bdf8;">🎯 DAILY PROFIT TARGET ($2.00)</span>
-                    <span id="targetProgPct" style="color:#4ade80;">0% ($2.00 to go)</span>
+                    <span style="color:#38bdf8;">🎯 DAILY PROFIT TARGET ($3.00)</span>
+                    <span id="targetProgPct" style="color:#4ade80;">0% ($3.00 to go)</span>
                 </div>
                 <div style="width:100%; background:#1e293b; height:7px; border-radius:4px; overflow:hidden;">
                     <div id="targetProgBar" style="height:100%; background:linear-gradient(90deg, #0284c7, #00e676); width:0%; transition:width 0.5s ease;"></div>
                 </div>
 
                 <div style="display:flex; justify-content:space-between; font-size:0.7rem; font-weight:bold; margin-top:8px; margin-bottom:3px;">
-                    <span style="color:#f87171;">🛑 DAILY LOSS LIMIT (-$3.00 AUTO-OFF)</span>
-                    <span id="lossBufferText" style="color:#38bdf8;">$3.00 buffer left</span>
+                    <span style="color:#f87171;">🛑 DAILY LOSS LIMIT (-$4.00 AUTO-OFF)</span>
+                    <span id="lossBufferText" style="color:#38bdf8;">$4.00 buffer left</span>
                 </div>
                 <div style="width:100%; background:#1e293b; height:7px; border-radius:4px; overflow:hidden;">
                     <div id="lossMeterBar" style="height:100%; background:#dc2626; width:0%; transition:width 0.5s ease;"></div>
@@ -502,8 +503,10 @@
             <div class="tabs-header">
                 <button class="tab-btn" id="tabApiBtn" onclick="switchMainRightTab('api')">📡 GATE.IO API LOGS</button>
                 <button class="tab-btn active" id="tabTradesBtn" onclick="switchMainRightTab('trades')">⚡ TRADES (<span id="topTradeHeaderCount">0</span>)</button>
+                <button class="tab-btn" id="tabBacktestBtn" onclick="switchMainRightTab('backtest')">🧪 REAL BACKTEST</button>
+                <button class="tab-btn" id="tabPerAssetBtn" onclick="switchMainRightTab('per_asset')">🪙 PER-ASSET STATS</button>
                 <button class="tab-btn" id="tabReportBtn" onclick="switchMainRightTab('report')">📅 MONTHLY REPORT</button>
-                <button class="tab-btn" id="tabDbBtn" onclick="switchMainRightTab('db')">🗄️ LIVE DB RECORDS LOGS</button>
+                <button class="tab-btn" id="tabDbBtn" onclick="switchMainRightTab('db')">🗄️ LIVE DB LOGS</button>
                 <button class="tab-btn" id="tabNewsBtn" onclick="switchMainRightTab('news')">🌐 AI NEWS</button>
             </div>
 
@@ -594,7 +597,7 @@
             <div style="background: #0c4a6e; border: 1px solid #0284c7; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="color: #38bdf8; font-size: 0.75rem; font-weight: bold;">✨ AI WIN PROBABILITY & FORECAST</span>
-                    <span style="background: #0369a1; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: bold;" id="dtModalProb">88% WIN PROBABILITY</span>
+                    <span style="background: #0369a1; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: bold;" id="dtModalProb">-- WIN PROBABILITY</span>
                 </div>
                 <div style="font-size: 0.7rem; color: #93c5fd; margin-top: 4px;" id="dtModalEstTime">
                     Estimated Time to Close: <b>28 Mins</b> (Calculated from Live 1m ATR Volatility Velocity & FinBERT Sentiment Index)
@@ -646,6 +649,17 @@
         let globalTradesCache = [];
         let selectedReportFilter = 'all'; // 'all', 'today', 'yesterday', '7days', 'month', 'custom'
         let customReportDate = '';
+        let priceHistory = [];
+        let lastReceivedTerminalData = null;
+        let liveTickerMap = {};
+        let liveAccountRaw = null;
+        let newsCacheMap = {};
+        let latestAssetSnapshot = {};
+
+        // Fix C4: Bangladesh time string formatter (was missing — crashed DB & API tabs)
+        function get_bd_time_str() {
+            return new Date().toLocaleString("en-US", { timeZone: "Asia/Dhaka" });
+        }
 
         function setReportDateFilter(filterVal) {
             selectedReportFilter = filterVal;
@@ -660,34 +674,6 @@
                 if (lastReceivedTerminalData) renderRightFeed(lastReceivedTerminalData);
             }
         }
-        let newsCacheMap = {
-            "ETH_USDT": [
-                { title: "Ethereum Layer-2 Volume Surge Signals Strong Institutional Accumulation", sentiment: "POSITIVE", score: 0.88, time: "2026-08-29 04:30 AM", url: "https://coindesk.com" },
-                { title: "Ether Futures Open Interest Hits New All-Time High Across Major Exchanges", sentiment: "POSITIVE", score: 0.82, time: "2026-08-29 03:15 AM", url: "https://cointelegraph.com" },
-                { title: "Staking Inflows Expand Network Security Ratio as Supply Decreases", sentiment: "POSITIVE", score: 0.79, time: "2026-08-28 11:00 PM", url: "https://bloomberg.com/crypto" }
-            ],
-            "BTC_USDT": [
-                { title: "Bitcoin ETF Spot Inflows Accelerate as On-Chain Reserves Reach 3-Year Lows", sentiment: "POSITIVE", score: 0.91, time: "2026-08-29 04:10 AM", url: "https://coindesk.com" },
-                { title: "Mining Hashrate Secures New Milestone Ahead of Difficulty Adjustment", sentiment: "POSITIVE", score: 0.84, time: "2026-08-29 02:45 AM", url: "https://cointelegraph.com" }
-            ],
-            "XAU_USDT": [
-                { title: "Gold Rallies as Global Central Banks Expand Reserve Accumulation", sentiment: "POSITIVE", score: 0.86, time: "2026-08-29 03:50 AM", url: "https://reuters.com/markets" },
-                { title: "Macro Uncertainty Drives Safe-Haven Capital Allocation into Bullion", sentiment: "NEUTRAL", score: 0.65, time: "2026-08-29 01:20 AM", url: "https://cnbc.com" }
-            ],
-            "NVDA_USDT": [
-                { title: "Nvidia Next-Gen AI Architecture Demand Exceeds Initial Supply Allocation", sentiment: "POSITIVE", score: 0.94, time: "2026-08-29 04:00 AM", url: "https://marketwatch.com" },
-                { title: "Enterprise Capex Forecasts Show Sustained Expansion in Data Center Spending", sentiment: "POSITIVE", score: 0.89, time: "2026-08-29 02:10 AM", url: "https://yahoo.com/finance" }
-            ],
-            "WTI_USDT": [
-                { title: "Crude Oil Inventory Drawdown Countered by Global Supply Fluctuations", sentiment: "NEGATIVE", score: 0.72, time: "2026-08-29 03:30 AM", url: "https://reuters.com/energy" }
-            ],
-            "US100_USDT": [
-                { title: "Nasdaq 100 Index Consolidates Near Highs as Tech Earnings Momentum Continues", sentiment: "NEUTRAL", score: 0.70, time: "2026-08-29 04:05 AM", url: "https://bloomberg.com" }
-            ],
-            "AAPL_USDT": [
-                { title: "Apple Expansion in Services Revenue Drives Margin Forecast Adjustments", sentiment: "POSITIVE", score: 0.83, time: "2026-08-29 03:40 AM", url: "https://cnbc.com" }
-            ]
-        };
 
         function get24hSessionTimeRemainingStr() {
             const now = new Date();
@@ -700,28 +686,28 @@
             const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
             return `${hrs}h ${mins}m ${secs}s`;
         }
-        let latestAssetSnapshot = {};
-        let lastReceivedTerminalData = null; // cached last API response — used by ticker sync
         window._openTradeEntry = 2443.4375;  // ETH avg entry price — updated from live positions
 
-        const tvMap = {
-            "XAU_USDT": "OANDA:XAUUSD",
-            "WTI_USDT": "TVC:USOIL",
-            "BTC_USDT": "BINANCE:BTCUSDT",
-            "ETH_USDT": "BINANCE:ETHUSDT",
-            "US100_USDT": "CAPITALCOM:US100",
-            "AAPL_USDT": "NASDAQ:AAPL",
-            "NVDA_USDT": "NASDAQ:NVDA"
+        const tvSymbolMap = {
+            'ETH_USDT': 'BINANCE:ETHUSDT',
+            'BTC_USDT': 'BINANCE:BTCUSDT',
+            'XAU_USDT': 'OANDA:XAUUSD',
+            'WTI_USDT': 'TVC:USOIL',
+            'US100_USDT': 'PEPPERSTONE:NAS100',
+            'AAPL_USDT': 'NASDAQ:AAPL',
+            'NVDA_USDT': 'NASDAQ:NVDA'
         };
 
         function initTradingViewChart(symbol) {
             const container = document.getElementById('tv_chart_container');
             container.innerHTML = '';
+            
+            const tvSym = tvSymbolMap[symbol] || ('BINANCE:' + symbol.replace('_',''));
 
             new TradingView.widget({
                 "width": "100%",
                 "height": 380,
-                "symbol": tvMap[symbol] || "BINANCE:ETHUSDT",
+                "symbol": tvSym,
                 "interval": "1",
                 "timezone": "Asia/Dhaka",
                 "theme": "dark",
@@ -932,8 +918,6 @@
         // ============================================================
         const GATEIO_PUBLIC = 'https://api.gateio.ws/api/v4/futures/usdt';
         let liveEthPrice = 2453.0;
-        let liveAccountRaw = null;
-        let liveTickerMap = {};
 
         // Source 1: Try Render backend /api/balance (Gate.io signed API proxy)
         async function fetchBalanceFromBackend() {
@@ -1087,7 +1071,7 @@
                 if (!firstFetchDone) {
                     const matEl = document.getElementById('fullAssetsTableBody');
                     if (matEl) matEl.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#0284c7;padding:14px;font-weight:bold;">🔄 Waking up Render server... (30-60s first load)</td></tr>';
-                    const feedEl = document.getElementById('rightFeed');
+                    const feedEl = document.getElementById('tradesFeed');
                     if (feedEl) feedEl.innerHTML = '<div style="text-align:center;color:#0284c7;padding:20px;font-weight:bold;">🔄 Connecting to Gate.io backend...<br><span style="font-size:.75rem;color:#64748b">Render free tier wakes in ~30s. Auto-refreshing every 2s...</span></div>';
                 }
 
@@ -1172,6 +1156,26 @@
 
         function renderTerminal(data) {
             if (!data) return;
+
+            const keyNotice = document.getElementById('keyNotice');
+            const liveBadge = document.getElementById('liveDataBadge');
+            if (data.is_live_data === false || data.data_source === 'SIMULATED_FALLBACK') {
+                if (keyNotice) keyNotice.innerHTML = '⚠️ FALLBACK DATA ACTIVE — REAL BACKEND API UNAVAILABLE';
+                if (liveBadge) {
+                    liveBadge.innerHTML = '⚠️ FALLBACK DATA — API UNAVAILABLE';
+                    liveBadge.style.background = '#450a0a';
+                    liveBadge.style.color = '#f87171';
+                    liveBadge.style.borderColor = '#dc2626';
+                }
+            } else {
+                if (keyNotice) keyNotice.innerHTML = 'REAL-TIME MARKET DATA • RENDER BACKEND API CONNECTED';
+                if (liveBadge) {
+                    liveBadge.innerHTML = '🟢 LIVE GATE.IO DATA';
+                    liveBadge.style.background = '#052e16';
+                    liveBadge.style.color = '#4ade80';
+                    liveBadge.style.borderColor = '#166534';
+                }
+            }
 
             // Filter: only real ETH_USDT trades (no paper BTC/XAU/US100/WTI/NVDA)
             // USE ALL BACKEND TRADES — all 7 assets, no filter
@@ -1299,7 +1303,7 @@
             const pnlSign = realDailyPnl >= 0 ? '+$' : '-$';
             document.getElementById('dailyPnL').innerText = pnlSign + Math.abs(realDailyPnl).toFixed(4);
             document.getElementById('dailyPnL').style.color = realDailyPnl >= 0 ? 'var(--green)' : 'var(--red)';
-            document.getElementById('tradeSizeSub').innerText = '$5.00 USD (FIXED)' +
+            document.getElementById('tradeSizeSub').innerText = '$4.00 USD (FIXED)' +
                 (data.safe_mode ? ' [SAFE MODE]' : '');
 
             // Update Bot Engine Status card
@@ -1597,7 +1601,7 @@
                         const closedAtStr = t.closed_at && t.closed_at !== t.created_at ? `<span style="color:#64748b;font-size:.6rem"> → Closed: ${t.closed_at}</span>` : '';
 
                         return `
-                            <div class="trade-card ${cardBorderClass}" onclick="openTradeDetailsModal(${idx})" style="border-left-width:4px;">
+                            <div class="trade-card ${cardBorderClass}" onclick="openTradeDetailsModal('${t.order_id || idx}')" style="border-left-width:4px;">
                                 <div class="tc-header">
                                     <span class="tc-title">${isBuy ? '⚡ BUY' : '🔴 SELL'} ${enName}${partialTag}${trailTag}</span>
                                     <span>${statusBadge}</span>
@@ -1606,7 +1610,7 @@
                                     📅 ${t.created_at || ''}${closedAtStr}
                                 </div>
                                 <div class="tc-details">
-                                    <span>Entry: <b>$${entryP.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</b>${t.exit_price && parseFloat(t.exit_price) !== entryP ? ` → Exit: <b>$${parseFloat(t.exit_price).toFixed(2)}</b>` : ''} | Size: <b>$5.00</b></span>
+                                    <span>Entry: <b>$${entryP.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</b>${t.exit_price && parseFloat(t.exit_price) !== entryP ? ` → Exit: <b>$${parseFloat(t.exit_price).toFixed(2)}</b>` : ''} | Size: <b>$4.00</b></span>
                                     <span class="${pnlVal>=0?'tc-pnl-green':'tc-pnl-red'}">${statusText}</span>
                                 </div>
                                 <div class="tpsl-box-row">
@@ -1745,9 +1749,9 @@
                         <div style="background: #050a14; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size:0.72rem;">
                             <div style="color:var(--cyan-accent); font-weight:bold; margin-bottom:4px;">🤖 BOT ENGINE EXECUTION LOGIC & SAFETY LIMITS:</div>
                             <div style="color:#94a3b8; line-height:1.5;">
-                                • <b>Fixed Trade Size:</b> $5.00 USD (Risk-Controlled Capital)<br>
-                                • <b>Daily Profit Target:</b> $2.00 USD (Auto Level Upgrade $5→$6→$7→$8)<br>
-                                • <b>Daily Stop Loss Limit:</b> -$3.00 USD (Bot Auto-Pauses to Protect Balance)<br>
+                                • <b>Fixed Trade Size:</b> $4.00 USD (Risk-Controlled Capital)<br>
+                                • <b>Daily Profit Target:</b> $3.00 USD (Auto Level Upgrade $5→$6→$7→$8)<br>
+                                • <b>Daily Stop Loss Limit:</b> -$4.00 USD (Bot Auto-Pauses to Protect Balance)<br>
                                 • <b>Signals:</b> 10-Point Technical & AI Audit across all 7 perpetual markets
                             </div>
                         </div>
@@ -1776,7 +1780,7 @@
                                         📅 ${t.created_at || ''} ${t.closed_at && t.closed_at !== t.created_at ? '→ ' + t.closed_at : ''}
                                     </div>
                                     <div style="display:flex; justify-content:space-between; font-size:0.72rem;">
-                                        <span style="color:#cbd5e1;">Entry: $${parseFloat(t.entry_price||0).toFixed(2)} | Size: $5.00</span>
+                                        <span style="color:#cbd5e1;">Entry: $${parseFloat(t.entry_price||0).toFixed(2)} | Size: $4.00</span>
                                         <b style="color:${pnlColor}; font-size:0.78rem;">${isOp ? 'LIVE PnL: ' : (isWin?'+$':'-$')}${Math.abs(pVal).toFixed(4)} USD</b>
                                     </div>
                                 </div>
@@ -1804,7 +1808,7 @@
                         <div style="background: #091322; border: 1.5px solid #0284c7; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.8rem;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <span style="color: var(--cyan-accent); font-weight: bold; font-size: 0.85rem;">🗄️ SUPABASE \`bot_state\` LIVE ROW #1</span>
-                                <span style="background: #15803d; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: bold;">✅ 100% SUPABASE POSTGRESQL SYNCHRONIZED</span>
+                                <span style="background: #15803d; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: bold;">SUPABASE POSTGRESQL CONNECTED</span>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem;">
                                 <div>ACTIVE TRADE SIZE: <b style="color: var(--yellow); font-size: 0.9rem;">$${curTradeSz} USD</b></div>
@@ -1889,9 +1893,92 @@
                                     <span style="color: var(--green);">${l.status} OK (${l.latency_ms}ms)</span>
                                 </div>
                                 <div style="color: #fff; margin-top: 4px; font-size: 0.75rem;">${l.details}</div>
-                                <div style="color: var(--text-muted); font-size: 0.65rem; margin-top: 2px;">BD TIME: ${l.timestamp}</div>
-                            </div>
                         `).join('')}
+                    </div>
+                `;
+            } else if (activeMainRightTab === 'backtest') {
+                document.getElementById('subFilterRow').style.display = 'none';
+                const bt = data.backtest_results || {};
+                const oldCfg = bt.old_config || {total_trades: 0, win_rate: 0, net_pnl: 0};
+                const newCfg = bt.new_config || {total_trades: 0, win_rate: 0, net_pnl: 0};
+                const details = bt.details || [];
+
+                feed.innerHTML = `
+                    <div style="padding: 6px; font-size: 0.8rem;">
+                        <div style="background:#091322; border:1.5px solid #0284c7; padding:12px; border-radius:6px; margin-bottom:10px;">
+                            <div style="font-weight:bold; color:var(--cyan-accent); font-size:0.85rem; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                                <span>🧪 REAL HISTORICAL BACKTEST (GATE.IO & LIVE MARKET OHLCV)</span>
+                                <span style="background:${bt.passed_gate?'#052e16':'#451a03'}; color:${bt.passed_gate?'#4ade80':'#fbbf24'}; border:1px solid ${bt.passed_gate?'#16a34a':'#d97706'}; font-size:0.68rem; padding:2px 8px; border-radius:4px; font-weight:bold;">
+                                    ${bt.passed_gate ? '✅ SAFETY GATE PASSED' : '⚠️ GATE PENDING'}
+                                </span>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:0.75rem;">
+                                <div style="background:#090d16; padding:8px; border-radius:4px; border:1px solid #1e293b;">
+                                    <div style="color:var(--text-muted); font-size:0.7rem; font-weight:bold;">OLD CONFIG (Strict RSI / Threshold 5)</div>
+                                    <div style="color:#fff; font-size:0.85rem; font-weight:bold; margin-top:2px;">${oldCfg.win_rate || 0}% Win Rate</div>
+                                    <div style="color:#94a3b8; font-size:0.7rem;">Trades: ${oldCfg.total_trades || 0} | Net PnL: +$${oldCfg.net_pnl || 0}</div>
+                                </div>
+                                <div style="background:#090d16; padding:8px; border-radius:4px; border:1px solid #0284c7;">
+                                    <div style="color:#38bdf8; font-size:0.7rem; font-weight:bold;">NEW CONFIG (Relaxed RSI / Threshold 4)</div>
+                                    <div style="color:var(--green); font-size:0.85rem; font-weight:bold; margin-top:2px;">${newCfg.win_rate || 0}% Win Rate</div>
+                                    <div style="color:#94a3b8; font-size:0.7rem;">Trades: ${newCfg.total_trades || 0} | Net PnL: +$${newCfg.net_pnl || 0}</div>
+                                </div>
+                            </div>
+                            <div style="color:#64748b; font-size:0.68rem; margin-top:6px;">
+                                * Replayed against genuine exchange candles. Deducts 0.05% taker fee + 0.05% slippage on every trade.
+                            </div>
+                        </div>
+
+                        <div style="font-weight:bold; color:var(--text-muted); font-size:0.75rem; margin-bottom:6px;">
+                            📊 7 ASSETS DETAILED HISTORICAL EVALUATION:
+                        </div>
+                        <table>
+                            <thead>
+                                <tr><th>Asset</th><th>Candles</th><th>Old WR</th><th>New WR</th><th>Net PnL</th><th>Status</th></tr>
+                            </thead>
+                            <tbody>
+                                ${details.length > 0 ? details.map(d => `
+                                    <tr>
+                                        <td><b>${d.symbol}</b></td>
+                                        <td>${d.candles_evaluated || 0}</td>
+                                        <td>${d.old_win_rate || 0}%</td>
+                                        <td style="color:var(--green); font-weight:bold;">${d.new_win_rate || 0}%</td>
+                                        <td style="color:${(d.new_pnl||0)>=0?'var(--green)':'var(--red)'};">+$${(d.new_pnl||0).toFixed(2)}</td>
+                                        <td style="font-size:0.65rem; color:${d.status.includes('SKIPPED')?'#fbbf24':'var(--green)'};">${d.status}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="6" style="text-align:center; color:#64748b;">Evaluating historical candles...</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (activeMainRightTab === 'per_asset') {
+                document.getElementById('subFilterRow').style.display = 'none';
+                const ws = data.win_stats || {};
+                feed.innerHTML = `
+                    <div style="padding:6px; font-size:0.8rem;">
+                        <div style="font-weight:bold; color:var(--cyan-accent); margin-bottom:8px;">🪙 REAL-TIME PER-ASSET PERFORMANCE & WIN STATS</div>
+                        <table>
+                            <thead>
+                                <tr><th>Asset</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Net PnL</th></tr>
+                            </thead>
+                            <tbody>
+                                ${Object.keys(ws).length > 0 ? Object.entries(ws).map(([sym, st]) => {
+                                    const tot = st.trades || 0;
+                                    const wr = tot > 0 ? ((st.wins / tot) * 100).toFixed(1) : '0.0';
+                                    const pnl = st.total_pnl || 0.0;
+                                    return `
+                                        <tr>
+                                            <td><b>${sym}</b></td>
+                                            <td>${tot}</td>
+                                            <td style="color:var(--green);">${st.wins || 0}</td>
+                                            <td style="color:var(--red);">${st.losses || 0}</td>
+                                            <td style="color:var(--green); font-weight:bold;">${wr}%</td>
+                                            <td style="color:${pnl>=0?'var(--green)':'var(--red)'}; font-weight:bold;">${pnl>=0?'+$':'-$'}${Math.abs(pnl).toFixed(2)}</td>
+                                        </tr>
+                                    `;
+                                }).join('') : '<tr><td colspan="6" style="text-align:center; color:#64748b;">No per-asset closed trades recorded yet.</td></tr>'}
+                            </tbody>
+                        </table>
                     </div>
                 `;
             }
@@ -1914,6 +2001,8 @@
             document.querySelectorAll('.trades-box .tab-btn').forEach(btn => btn.classList.remove('active'));
             if (tabName === 'api' && document.getElementById('tabApiBtn')) document.getElementById('tabApiBtn').classList.add('active');
             if (tabName === 'trades' && document.getElementById('tabTradesBtn')) document.getElementById('tabTradesBtn').classList.add('active');
+            if (tabName === 'backtest' && document.getElementById('tabBacktestBtn')) document.getElementById('tabBacktestBtn').classList.add('active');
+            if (tabName === 'per_asset' && document.getElementById('tabPerAssetBtn')) document.getElementById('tabPerAssetBtn').classList.add('active');
             if (tabName === 'report' && document.getElementById('tabReportBtn')) document.getElementById('tabReportBtn').classList.add('active');
             if (tabName === 'db' && document.getElementById('tabDbBtn')) document.getElementById('tabDbBtn').classList.add('active');
             if (tabName === 'news' && document.getElementById('tabNewsBtn')) document.getElementById('tabNewsBtn').classList.add('active');
@@ -1922,8 +2011,13 @@
             fetchTerminalData();
         }
 
-        function openTradeDetailsModal(tradeIdx) {
-            const t = globalTradesCache[tradeIdx];
+        function openTradeDetailsModal(tradeRef) {
+            let t;
+            if (typeof tradeRef === 'string') {
+                t = globalTradesCache.find(tr => (tr.order_id || '') === tradeRef) || globalTradesCache[parseInt(tradeRef)] || globalTradesCache[0];
+            } else {
+                t = globalTradesCache[tradeRef];
+            }
             if (!t) return;
 
             const entryP = parseFloat(t.entry_price) || 100.0;
@@ -1990,8 +2084,9 @@
 
         function closeTradeDetailsModal() { document.getElementById('tradeDetailsModal').classList.remove('open'); }
         function toggleTunerMinimize() {
-            const form = document.getElementById('tunerForm');
             const btn = document.getElementById('btnToggleTuner');
+            if (!btn) return;
+            const form = document.getElementById('tunerForm');
             if (form.style.display === 'none') {
                 form.style.display = 'grid';
                 btn.innerText = '− MINIMIZE';
@@ -2135,7 +2230,7 @@
                                     <b style="color:var(--cyan-accent);" id="modalAvailVal">$400.00 USDT</b>
                                 </div>
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                                    <span style="color:var(--text-muted);">SAFE VAULT RESERVE (60% PROTECTED):</span>
+                                    <span style="color:var(--text-muted);">SAFE VAULT RESERVE (60% RESERVED):</span>
                                     <b style="color:#fff;" id="modalSafeVal">$600.00 USDT</b>
                                 </div>
                             </div>
@@ -2212,6 +2307,8 @@
         }, 100);
 
         function syncLiveGateIoAccountAssets(data) {
+            // DEPRECATED: Not in use. return;
+            return;
             if (!data || !data.gateio_account_raw) return;
             const raw = data.gateio_account_raw;
             const marginBal = parseFloat(raw.cross_margin_balance || raw.total || 1000.34);

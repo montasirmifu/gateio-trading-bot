@@ -816,28 +816,27 @@ class TradingBotEngine:
             send_telegram_alert(f"🔒 <b>SAFE MODE ACTIVATED!</b>\nTrade size reduced to ${SAFE_MODE_SIZE:.2f} for capital conservation.")
 
     def refresh_live_cache(self):
-        """Refreshes live Gate.io data cache. PROBLEM 4 FIX: Flags fallback data clearly."""
+        """Refreshes live Gate.io data cache. Parses all account and position fields."""
         link_base = "https://testnet.gate.com/futures/USDT/{sym}?fromlink=www.gate.com&uid=59787607"
         try:
             acc = gate_api_request("GET", "/futures/usdt/accounts")
             if acc and isinstance(acc, dict) and "total" in acc:
-                cross_bal = float(acc.get("cross_margin_balance", acc.get("total", 1000.34)))
-                un_pnl = float(acc.get("cross_unrealised_pnl", 0.0))
+                cross_bal = float(acc.get("cross_margin_balance", acc.get("total", 1000.0)))
+                wallet_tot = float(acc.get("total", cross_bal))
+                un_pnl = float(acc.get("cross_unrealised_pnl", acc.get("unrealised_pnl", 0.0)))
+                mm_val = float(acc.get("maintenance_margin", acc.get("cross_maintenance_margin", 0.0)))
                 self.cached_account_raw = {
                     "cross_margin_balance": f"{cross_bal:.2f}",
-                    "total": f"{float(acc.get('total', 999.95)):.2f}",
-                    "cross_unrealised_pnl": f"{un_pnl:+.4f}",
-                    "maintenance_margin": f"{float(acc.get('maintenance_margin', 0.47)):.4f}",
+                    "total": f"{wallet_tot:.2f}",
+                    "cross_unrealised_pnl": f"{un_pnl:+.2f}",
+                    "maintenance_margin": f"{mm_val:.2f}",
                     "user": acc.get("user", 59787607),
                     "data_source": "LIVE_GATEIO_API"
                 }
                 self.total_balance = cross_bal
-                # NOTE: Do NOT overwrite self.daily_pnl here.
-                # daily_pnl tracks REALIZED session PnL (accumulated via monitor_open_position).
-                # Overwriting it with unrealised PnL destroys staircase tracking and loss limit enforcement.
-                # Store unrealised PnL separately for dashboard display only.
                 self.unrealised_pnl = un_pnl
                 self.is_live_data = True
+                logger.info(f"[CACHE] Balance: ${cross_bal:.2f}, Unrealized PnL: ${un_pnl:+.2f}")
             else:
                 self.is_live_data = False
                 self.cached_account_raw = {
@@ -861,19 +860,28 @@ class TradingBotEngine:
                     if sz == 0: continue
                     sym = p.get("contract", "ETH_USDT")
                     entry_p = float(p.get("entry_price", 0.0))
+                    mark_p = float(p.get("mark_price", entry_p))
                     pos_pnl = float(p.get("unrealised_pnl", 0.0))
                     side = "BUY" if sz > 0 else "SELL"
+                    order_id = str(p.get("id", p.get("order_id", "1")))
+                    logger.info(f"[CACHE] Found open position: {side} {abs(sz)} {sym} @ ${entry_p:.2f}")
                     open_trades_new.append({
-                        "symbol": sym, "symbol_en": ASSET_NAMES_EN.get(sym, sym),
-                        "side": side, "entry_price": entry_p, "exit_price": None,
-                        "pnl": round(pos_pnl, 4), "status": "OPEN",
+                        "symbol": sym,
+                        "symbol_en": ASSET_NAMES_EN.get(sym, sym),
+                        "side": side,
+                        "entry_price": entry_p,
+                        "mark_price": mark_p,
+                        "exit_price": None,
+                        "pnl": round(pos_pnl, 4),
+                        "status": "OPEN",
                         "data_source": "LIVE_GATEIO_API",
                         "created_at": get_bd_time_str(),
-                        "tp": round(entry_p * 1.02, 2), "sl": round(entry_p * 0.985, 2),
-                        "size": abs(sz), "order_id": str(p.get("id", "1")),
+                        "tp": round(entry_p * (1.0 + USER_TAKE_PROFIT_PCT / 100.0) if side == "BUY" else entry_p * (1.0 - USER_TAKE_PROFIT_PCT / 100.0), 4),
+                        "sl": round(entry_p * (1.0 - USER_STOP_LOSS_PCT / 100.0) if side == "BUY" else entry_p * (1.0 + USER_STOP_LOSS_PCT / 100.0), 4),
+                        "size": abs(sz),
+                        "order_id": order_id,
                         "gateio_link": link_base.format(sym=sym)
                     })
-            # PROBLEM 4 FIX: If no positions exist on Gate.io, return empty list (NO FAKE POSITIONS)
             self.cached_open_trades = open_trades_new
         except Exception as e:
             logger.error(f"[CACHE] Positions error: {e}")
@@ -960,14 +968,14 @@ class TradingBotEngine:
         self.check_daily_midnight_reset()
         if USER_ACTIVE_HOURS_ONLY:
             bd_hour = get_bd_time().hour
-            if bd_hour < 8 or bd_hour >= 23:  # Only trade 8AM-11PM BST
+            if bd_hour < 10 or bd_hour >= 22:  # Only trade 10AM-10PM BST
                 return
         if symbol in self.cooldowns:
             if time.time() - self.cooldowns[symbol] < USER_COOLDOWN_SECS:
                 return
-        df_1m  = fetch_live_public_klines(symbol, interval="1m")
-        df_5m  = fetch_live_public_klines(symbol, interval="5m")
-        df_15m = fetch_live_public_klines(symbol, interval="15m")
+        df_1m  = fetch_live_public_klines(symbol, interval="1m", limit=100)
+        df_5m  = fetch_live_public_klines(symbol, interval="5m", limit=100)
+        df_15m = fetch_live_public_klines(symbol, interval="15m", limit=100)
         if df_1m is None or len(df_1m) < 35: return
 
         curr_price = df_1m['close'].iloc[-1]
@@ -984,8 +992,17 @@ class TradingBotEngine:
         support_level, resistance_level = calculate_support_resistance(df_1m)
         ob_depth   = fetch_order_book_depth(symbol)
 
-        rsi_5m  = float(calculate_rsi(df_5m['close']).iloc[-1])  if df_5m is not None and len(df_5m) > 20 else 50.0
-        rsi_15m = float(calculate_rsi(df_15m['close']).iloc[-1]) if df_15m is not None and len(df_15m) > 20 else 50.0
+        if df_5m is not None and len(df_5m) > 20:
+            rsi_5m = float(calculate_rsi(df_5m['close']).iloc[-1])
+        else:
+            rsi_5m = 50.0
+            logger.warning(f"[INDICATOR] {symbol}: Insufficient 5m candles for RSI ({len(df_5m) if df_5m is not None else 0})")
+
+        if df_15m is not None and len(df_15m) > 20:
+            rsi_15m = float(calculate_rsi(df_15m['close']).iloc[-1])
+        else:
+            rsi_15m = 50.0
+            logger.warning(f"[INDICATOR] {symbol}: Insufficient 15m candles for RSI ({len(df_15m) if df_15m is not None else 0})")
 
         mtf_rsi_buy  = (float(rsi_1m) < 38) and (rsi_5m < 42) and (rsi_15m < 45)
         mtf_rsi_sell = (float(rsi_1m) > 62) and (rsi_5m > 58) and (rsi_15m > 55)
@@ -1408,11 +1425,14 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             "is_live_data": bot_engine.is_live_data,
             "data_source": bot_engine.cached_account_raw.get("data_source", "SIMULATED_FALLBACK"),
             "bangladesh_time": get_bd_time_str(),
+            "gateio_account_raw": bot_engine.cached_account_raw,
             "total_balance": float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)),
+            "wallet_balance": float(bot_engine.cached_account_raw.get("total", 1000.0)),
+            "unrealised_pnl": float(bot_engine.cached_account_raw.get("cross_unrealised_pnl", 0.0)),
+            "maintenance_margin": float(bot_engine.cached_account_raw.get("maintenance_margin", 0.0)),
             "safe_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.60, 2),
             "trading_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.40, 2),
             "daily_pnl": round(bot_engine.daily_pnl, 6),
-            "unrealised_pnl": round(bot_engine.unrealised_pnl, 6),
             "daily_target": USER_DAILY_TARGET,
             "daily_loss_limit": USER_DAILY_LOSS_LIMIT,
             "trade_usd_size": bot_engine.trade_usd_size,

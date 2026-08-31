@@ -989,37 +989,25 @@
                         updated_at: new Date().toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka'})
                     };
                 }
-                // Update open trade PnL in real-time
-                if (window._openTradeEntry) {
-                    const livePnl = parseFloat(((liveEthPrice - window._openTradeEntry) * 4 * 0.01).toFixed(4));
-                    if (document.getElementById('gateUnrealizedPnl')) {
-                        document.getElementById('gateUnrealizedPnl').innerText = (livePnl >= 0 ? '+' : '') + livePnl.toFixed(2) + ' USDT';
-                        document.getElementById('gateUnrealizedPnl').style.color = livePnl >= 0 ? 'var(--green)' : 'var(--red)';
-                    }
-                }
             } catch(e) {}
         }
 
         function updateBalanceUI(marginBal, walletBal, unPnl, mmVal) {
             if (document.getElementById('gateMarginBalance')) {
-                document.getElementById('gateMarginBalance').innerText = marginBal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
-                document.getElementById('gateAccountAssets').innerText = marginBal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
-                document.getElementById('gateWalletAssets').innerText = walletBal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
-                document.getElementById('gateUnrealizedPnl').innerText = (unPnl >= 0 ? '+' : '') + unPnl.toFixed(2) + ' USDT';
+                document.getElementById('gateMarginBalance').innerText = parseFloat(marginBal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
+                document.getElementById('gateAccountAssets').innerText = parseFloat(marginBal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
+                document.getElementById('gateWalletAssets').innerText = parseFloat(walletBal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
+                const pnlSign = unPnl >= 0 ? '+' : '';
+                document.getElementById('gateUnrealizedPnl').innerText = pnlSign + parseFloat(unPnl).toFixed(2) + ' USDT';
                 document.getElementById('gateUnrealizedPnl').style.color = unPnl >= 0 ? 'var(--green)' : 'var(--red)';
-                document.getElementById('gateMm').innerText = mmVal.toFixed(2) + ' USDT';
+                document.getElementById('gateMm').innerText = parseFloat(mmVal).toFixed(2) + ' USDT';
             }
             if (document.getElementById('totalEquity')) document.getElementById('totalEquity').innerText = '$' + parseFloat(marginBal).toFixed(2);
-            if (document.getElementById('dailyPnL')) {
-                document.getElementById('dailyPnL').innerText = (unPnl >= 0 ? '+$' : '-$') + Math.abs(unPnl).toFixed(2);
-                document.getElementById('dailyPnL').style.color = unPnl >= 0 ? 'var(--green)' : 'var(--red)';
-            }
         }
 
-        // Master live sync: tries backend first, always updates tickers
+        // Master live sync: always updates live asset prices
         async function fetchLiveGateIoTickers() {
-            await fetchBalanceFromBackend(); // try real Gate.io signed balance via Render proxy
-            await fetchBalanceFromTickers(); // always update live asset prices
+            await fetchBalanceFromTickers();
         }
 
         // All trades come exclusively from real backend /api/stats
@@ -1250,12 +1238,12 @@
             envBadge.innerText = (data.env_mode || 'TESTNET') + ' MODE';
             envBadge.className = 'mode-badge ' + (data.env_mode === 'PRODUCTION' ? 'prod' : '');
 
-            // Real backend account equity
-            const raw = data.gateio_account_raw || liveAccountRaw || {};
-            const marginBal = parseFloat(data.total_balance || raw.cross_margin_balance || 100.0);
-            const walletBal = parseFloat(raw.total || marginBal);
-            const unPnl = parseFloat(data.unrealised_pnl !== undefined ? data.unrealised_pnl : (raw.cross_unrealised_pnl || 0.0));
-            const mmVal = parseFloat(raw.maintenance_margin || 0.23);
+            // Real backend account equity directly from Gate.io
+            const raw = data.gateio_account_raw || {};
+            const marginBal = parseFloat(raw.cross_margin_balance || data.total_balance || 1000.0);
+            const walletBal = parseFloat(raw.total || data.wallet_balance || marginBal);
+            const unPnl = parseFloat(raw.cross_unrealised_pnl !== undefined ? raw.cross_unrealised_pnl : (data.unrealised_pnl !== undefined ? data.unrealised_pnl : 0.0));
+            const mmVal = parseFloat(raw.maintenance_margin !== undefined ? raw.maintenance_margin : (data.maintenance_margin !== undefined ? data.maintenance_margin : 0.0));
 
             if (document.getElementById('gateMarginBalance')) {
                 document.getElementById('gateMarginBalance').innerText = marginBal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' USDT';
@@ -1549,17 +1537,15 @@
                         const tradeSz = parseFloat(t.trade_usd || 5.0);
                         const enName = t.symbol_en || t.symbol;
 
-                        // Live price from ticker map for real-time PnL
+                        // Exact real-time PnL from Gate.io
                         const livePrice = liveTickerMap[t.symbol] ? parseFloat(liveTickerMap[t.symbol].last) : entryP;
-                        let pnlVal;
-                        if (isOpen && livePrice > 0 && entryP > 0) {
+                        let pnlVal = (t.pnl !== undefined && t.pnl !== null) ? parseFloat(t.pnl) : 0.0;
+                        if (isOpen && pnlVal === 0 && livePrice > 0 && entryP > 0) {
                             const pct = isBuy ? (livePrice - entryP)/entryP : (entryP - livePrice)/entryP;
                             pnlVal = pct * tradeSz;
-                        } else {
-                            pnlVal = (t.pnl !== undefined && t.pnl !== null) ? parseFloat(t.pnl) : 0.0;
                         }
                         const isProf = pnlVal >= 0;
-                        const profPct = entryP > 0 ? ((Math.abs(pnlVal) / tradeSz) * 100).toFixed(2) : '0.00';
+                        const profPct = (entryP > 0 && tradeSz > 0) ? ((Math.abs(pnlVal) / tradeSz) * 100).toFixed(2) : '0.00';
 
 
                         const partialTag = t.partial_done ? `<span style="background:#1a3a1a;color:#86efac;border:1px solid #16a34a;font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">50% BOOKED</span>` : '';

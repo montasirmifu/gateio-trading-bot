@@ -78,6 +78,8 @@ PARTIAL_TRIGGER      = 1.5   # % profit to close 50%
 PARTIAL_PCT          = 0.50
 FEE_TAKER            = 0.0005 # 0.05% taker fee
 SLIPPAGE_RATE        = 0.0005 # 0.05% slippage
+PROFIT_LOCK_STEP     = 0.50   # Lock profit every $0.50 increment
+PROFIT_LOCK_OFFSET   = 0.25   # SL trails $0.25 behind the lock level
 
 ASSET_NAMES_EN = {
     "XAU_USDT":   "Gold (XAU/USDT)",
@@ -717,6 +719,7 @@ class TradingBotEngine:
         self.badge_threshold    = USER_BADGE_THRESHOLD
         self.daily_pnl          = 0.0
         self.daily_peak_pnl     = 0.0
+        self.daily_pnl_floor    = 0.0  # Profit lock floor — ratchets up every $0.50
         self.staircase_level    = 0
         self.safe_mode_active   = False
         self.bot_active         = True
@@ -770,6 +773,7 @@ class TradingBotEngine:
             self.last_reset_day = curr_day
             self.daily_pnl = 0.0
             self.daily_peak_pnl = 0.0
+            self.daily_pnl_floor = 0.0
             self.staircase_level = 0
             self.safe_mode_active = False
             self.trade_usd_size = USER_TRADE_SIZE
@@ -783,6 +787,25 @@ class TradingBotEngine:
         if pnl > self.daily_peak_pnl:
             self.daily_peak_pnl = pnl
 
+        # === $0.50 STEP PROFIT LOCKING ===
+        # Every time PnL crosses a new $0.50 mark, raise the floor by $0.25 behind it
+        # e.g. PnL hits $0.50 → floor = $0.25, PnL hits $1.00 → floor = $0.75, etc.
+        if pnl >= PROFIT_LOCK_STEP:
+            steps_hit = int(pnl / PROFIT_LOCK_STEP)
+            new_floor = (steps_hit * PROFIT_LOCK_STEP) - PROFIT_LOCK_OFFSET
+            if new_floor > self.daily_pnl_floor:
+                old_floor = self.daily_pnl_floor
+                self.daily_pnl_floor = new_floor
+                logger.info(f"[PROFIT LOCK] Floor raised: ${old_floor:.2f} → ${new_floor:.2f} (PnL at ${pnl:.2f})")
+
+        # If PnL drops below locked floor, stop trading to protect gains
+        if self.daily_pnl_floor > 0 and pnl <= self.daily_pnl_floor:
+            logger.info(f"[PROFIT LOCK TRIGGERED] PnL ${pnl:.2f} hit floor ${self.daily_pnl_floor:.2f}. Securing gains.")
+            self.bot_active = False
+            send_telegram_alert(f"🔒 <b>PROFIT LOCK TRIGGERED!</b>\nPeak: +${self.daily_peak_pnl:.2f}\nLocked Floor: +${self.daily_pnl_floor:.2f}\nSecured: +${pnl:.2f}\nBot paused to protect gains.")
+            return
+
+        # === STAIRCASE LEVEL TRAILING STOPS ===
         if self.daily_peak_pnl >= 5.0 and self.staircase_level in STAIRCASE_SL_LEVELS:
             trail_sl = STAIRCASE_SL_LEVELS[self.staircase_level]
             if pnl <= trail_sl:
@@ -791,12 +814,14 @@ class TradingBotEngine:
                 send_telegram_alert(f"🛑 <b>TRAILING STOP HIT!</b>\nPeak: +${self.daily_peak_pnl:.2f}\nSecured Profit: +${pnl:.2f}\nBot paused for session.")
                 return
 
+        # === DAILY LOSS LIMIT ===
         if pnl <= -abs(self.daily_loss_limit):
             logger.info(f"[LOSS LIMIT] Daily loss ${pnl:.2f} hit limit!")
             self.bot_active = False
             send_telegram_alert(f"🚨 <b>DAILY LOSS LIMIT HIT!</b>\nPnL: ${pnl:.2f}\nBot paused for safety.")
             return
 
+        # === STAIRCASE LEVEL UPGRADES ===
         targets_hit = sum(1 for t in STAIRCASE_TARGETS if pnl >= t)
         if targets_hit > self.staircase_level:
             for lvl in range(self.staircase_level + 1, targets_hit + 1):
@@ -807,7 +832,7 @@ class TradingBotEngine:
                 send_telegram_alert(f"🎯 <b>STAIRCASE LEVEL {lvl} ACHIEVED (${tgt:.2f})!</b>\nDaily PnL: +${pnl:.2f}\nNext Trade Size: ${new_size:.2f}")
             self.staircase_level = targets_hit
 
-        # PROBLEM 3 FIX: Factual statement without misleading percentage claims
+        # === SAFE MODE ($8+) ===
         if pnl >= 8.0 and not self.safe_mode_active:
             self.safe_mode_active = True
             self.trade_usd_size = SAFE_MODE_SIZE
@@ -1080,13 +1105,39 @@ class TradingBotEngine:
         self.cooldowns[symbol] = time.time()
         send_telegram_alert(f"⚡ <b>TRADE EXECUTED ({side})</b>\n<b>Asset:</b> {ASSET_NAMES_EN.get(symbol, symbol)}\n<b>Entry:</b> ${price:,.2f} | <b>Size:</b> ${smart_size:,.2f}\n<b>TP:</b> ${tp:,.2f} | <b>SL:</b> ${sl:,.2f}")
 
+    def step_trailing_stop(self, trade, curr_price, pnl_usd):
+        """Locks profit at every $0.50 increment:
+        $0.50 PnL -> SL locks at $0.25 profit
+        $1.00 PnL -> SL locks at $0.75 profit
+        $1.50 PnL -> SL locks at $1.25 profit
+        $2.00 PnL -> SL locks at $1.75 profit
+        """
+        if pnl_usd >= PROFIT_LOCK_STEP:
+            steps = int(pnl_usd / PROFIT_LOCK_STEP)
+            target_locked_usd = (steps * PROFIT_LOCK_STEP) - PROFIT_LOCK_OFFSET
+            if target_locked_usd > trade.get("locked_profit_usd", 0.0):
+                trade["locked_profit_usd"] = target_locked_usd
+                entry_p = float(trade["entry_price"])
+                side = trade["side"]
+                trade_usd = float(trade.get("trade_usd", 4.0))
+                price_diff = (target_locked_usd / max(trade_usd, 1.0)) * entry_p
+                new_sl = round(entry_p + price_diff if side == "BUY" else entry_p - price_diff, 4)
+                if (side == "BUY" and new_sl > trade["sl"]) or (side == "SELL" and new_sl < trade["sl"]):
+                    trade["sl"] = new_sl
+                    logger.info(f"[STEP SL LOCK] {trade['symbol']}: Locked +${target_locked_usd:.2f} profit. New SL: ${new_sl:.2f}")
+
     def monitor_open_position(self, symbol, curr_price):
         trade = self.open_trades.get(symbol)
         if not trade: return
         entry_p, side, tp, sl = float(trade["entry_price"]), str(trade["side"]), float(trade["tp"]), float(trade["sl"])
         curr_p = float(curr_price)
         pnl_pct = ((curr_p - entry_p)/entry_p)*100 if side == "BUY" else ((entry_p - curr_p)/entry_p)*100
+        pnl_usd = round((pnl_pct / 100) * float(trade.get("trade_usd", 4.0)), 4)
 
+        # 1. Step-by-step $0.50 profit lock
+        self.step_trailing_stop(trade, curr_p, pnl_usd)
+
+        # 2. 50% partial take profit
         if pnl_pct >= PARTIAL_TRIGGER and not trade.get("partial_done"):
             partial_contracts = max(1, int(trade["size"] * PARTIAL_PCT))
             place_order(symbol, "SELL" if side == "BUY" else "BUY", partial_contracts)
@@ -1094,6 +1145,7 @@ class TradingBotEngine:
             trade["size"] -= partial_contracts
             logger.info(f"[PARTIAL TP] {symbol}: Closed {partial_contracts} contracts at {pnl_pct:.2f}% profit")
 
+        # 3. Dynamic trailing stop
         if pnl_pct >= TRAILING_TRIGGER:
             new_sl = round(curr_p * (1 - TRAILING_DISTANCE/100), 4) if side == "BUY" else round(curr_p * (1 + TRAILING_DISTANCE/100), 4)
             if (side == "BUY" and new_sl > trade["sl"]) or (side == "SELL" and new_sl < trade["sl"]):
@@ -1103,16 +1155,16 @@ class TradingBotEngine:
         hit_sl = (side == "BUY" and curr_p <= sl) or (side == "SELL" and curr_p >= sl)
 
         if hit_tp or hit_sl:
-            pnl_usd = round((pnl_pct / 100) * float(trade["trade_usd"]), 4)
             self.daily_pnl += pnl_usd
-            reason = "TAKE_PROFIT_HIT" if hit_tp else "STOP_LOSS_HIT"
+            reason = "TAKE_PROFIT_HIT" if hit_tp else ("PROFIT_LOCK_HIT" if pnl_usd > 0 else "STOP_LOSS_HIT")
             place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])
             execute_db_query("""
                 UPDATE bot_trades SET exit_price = %s, pnl = %s, status = 'CLOSED', exit_reason = %s
                 WHERE id = (SELECT id FROM bot_trades WHERE symbol = %s AND status = 'OPEN' ORDER BY id DESC LIMIT 1);
             """, (curr_p, pnl_usd, reason, symbol))
-            send_telegram_alert(f"{'🟢' if hit_tp else '🔴'} <b>TRADE CLOSED ({reason})</b>\n<b>Asset:</b> {symbol}\n<b>PnL:</b> {'+' if pnl_usd>=0 else ''}${pnl_usd:.2f} USD")
+            send_telegram_alert(f"{'🟢' if hit_tp else ('🔒' if pnl_usd>0 else '🔴')} <b>TRADE CLOSED ({reason})</b>\n<b>Asset:</b> {symbol}\n<b>PnL:</b> {'+' if pnl_usd>=0 else ''}${pnl_usd:.2f} USD")
             del self.open_trades[symbol]
+            self.check_staircase()
 
     def run_heartbeat(self):
         while True:
@@ -1420,6 +1472,18 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
 
+        # Calculate next target and progress
+        _pnl = bot_engine.daily_pnl
+        _level = bot_engine.staircase_level
+        if _level < len(STAIRCASE_TARGETS):
+            _next_tgt = STAIRCASE_TARGETS[_level]
+            _prev_tgt = STAIRCASE_TARGETS[_level - 1] if _level > 0 else 0.0
+            _range = _next_tgt - _prev_tgt
+            _progress = max(0, min(100, ((_pnl - _prev_tgt) / _range) * 100)) if _range > 0 else 0
+        else:
+            _next_tgt = 0.0
+            _progress = 100.0
+
         response_data = {
             "status": "ONLINE",
             "is_live_data": bot_engine.is_live_data,
@@ -1433,6 +1497,10 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             "safe_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.60, 2),
             "trading_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.40, 2),
             "daily_pnl": round(bot_engine.daily_pnl, 6),
+            "daily_peak_pnl": round(bot_engine.daily_peak_pnl, 4),
+            "daily_pnl_floor": round(bot_engine.daily_pnl_floor, 4),
+            "next_target": _next_tgt,
+            "target_progress": round(_progress, 1),
             "daily_target": USER_DAILY_TARGET,
             "daily_loss_limit": USER_DAILY_LOSS_LIMIT,
             "trade_usd_size": bot_engine.trade_usd_size,
@@ -1472,7 +1540,7 @@ def cache_refresh_loop():
             bot_engine.refresh_live_cache()
             execute_db_query("UPDATE bot_state SET total_balance = %s, daily_pnl = %s, trade_usd_size = %s, updated_at = (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours') WHERE id = 1;", (bot_engine.total_balance, bot_engine.daily_pnl, bot_engine.trade_usd_size))
         except Exception: pass
-        time.sleep(2)
+        time.sleep(0.5)
 
 def main():
     logger.info("=" * 65)
@@ -1493,7 +1561,7 @@ def main():
     threading.Thread(target=bot_engine.run_heartbeat, daemon=True).start()
     threading.Thread(target=keep_render_alive, daemon=True).start()
 
-    logger.info("[MAIN LOOP] 2-second scan cycle active for all 7 assets.")
+    logger.info("[MAIN LOOP] 500ms scan cycle active for all 7 assets.")
     while True:
         try:
             if bot_engine.bot_active:
@@ -1501,7 +1569,7 @@ def main():
                     bot_engine.process_symbol(symbol)
         except Exception as e:
             logger.error(f"[MAIN LOOP ERROR] {e}")
-        time.sleep(2)
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     main()

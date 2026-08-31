@@ -1323,20 +1323,49 @@
                 document.getElementById('botActivePill').style.color = data.bot_active !== false ? '#4ade80' : '#f97316';
             }
 
-            // Staircase progress display ($5 -> $6 -> $7 -> $8+)
+            // Staircase progress display ($5 -> $6 -> $7 -> $8+) with real-time progress bar
             const stairLevel = parseInt(data.staircase_level || 0);
+            const nextTarget = parseFloat(data.next_target || 5.0);
+            const targetProgress = parseFloat(data.target_progress || 0);
+            const pnlFloor = parseFloat(data.daily_pnl_floor || 0);
+            const peakPnl = parseFloat(data.daily_peak_pnl || 0);
             const stairEl = document.getElementById('staircaseBar');
             if (stairEl) {
                 const tgts = ['$5','$6','$7','$8'];
-                stairEl.innerHTML = tgts.map((t,i) =>
+                const sizes = ['$7','$8','$5','$2'];
+                const labels = ['Size $7','Size $8','Size $5','Safe $2'];
+                let stairHtml = tgts.map((t,i) =>
                     `<span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:bold;margin-right:4px;
                     background:${i<stairLevel?'#052e16':'#1a0000'};
                     color:${i<stairLevel?'#4ade80':'#f87171'};
                     border:1px solid ${i<stairLevel?'#16a34a':'#dc2626'}">
-                    ${i<stairLevel?'✅':'⬜'} ${t}</span>`
-                ).join('') +
-                `<span style="margin-left:8px;color:${data.safe_mode?'#fbbf24':'#94a3b8'};font-size:.7rem">
-                ${data.safe_mode ? '🔒 SAFE MODE (UNLIMITED)' : 'Level: '+stairLevel+'/4'}</span>`;
+                    ${i<stairLevel?'✅':'⬜'} ${t} (${labels[i]})</span>`
+                ).join('');
+
+                // Next target info
+                if (stairLevel < 4 && !data.safe_mode) {
+                    stairHtml += `<span style="margin-left:8px;color:#00f2fe;font-size:.72rem;font-weight:bold">
+                        🎯 Next: ${nextTarget > 0 ? '$'+nextTarget.toFixed(0) : 'DONE'} | Progress: ${targetProgress.toFixed(0)}%</span>`;
+                } else if (data.safe_mode) {
+                    stairHtml += `<span style="margin-left:8px;color:#fbbf24;font-size:.72rem;font-weight:bold">
+                        🔒 SAFE MODE (UNLIMITED)</span>`;
+                } else {
+                    stairHtml += `<span style="margin-left:8px;color:#4ade80;font-size:.72rem;font-weight:bold">
+                        🏆 ALL TARGETS HIT!</span>`;
+                }
+
+                // Profit lock floor display
+                if (pnlFloor > 0) {
+                    stairHtml += `<span style="margin-left:8px;color:#fbbf24;font-size:.68rem">
+                        🔒 Floor: $${pnlFloor.toFixed(2)} | Peak: $${peakPnl.toFixed(2)}</span>`;
+                }
+
+                // Progress bar
+                stairHtml += `<div style="margin-top:4px;height:6px;background:#1a0000;border-radius:3px;overflow:hidden;border:1px solid #333">
+                    <div style="height:100%;width:${targetProgress}%;background:linear-gradient(90deg,#00e676,#00f2fe);border-radius:3px;transition:width 0.3s"></div>
+                </div>`;
+
+                stairEl.innerHTML = stairHtml;
             }
 
             if (document.activeElement !== document.getElementById('inTradeSize') && document.activeElement !== document.getElementById('inDailyTarget')) {
@@ -1487,7 +1516,7 @@
             globalTradesCache = realLast.concat(realOpen);
 
             const countBadge = document.getElementById('topTradeHeaderCount');
-            if (countBadge) countBadge.innerText = globalTradesCache.length;
+            if (countBadge) countBadge.innerText = todayTrades.length;
             renderRightFeed(data);
         }
 
@@ -2337,7 +2366,7 @@
             setInterval(fetchLiveGateIoTickers, 500);
             // Start backend data polling
             fetchTerminalData();
-            setInterval(fetchTerminalData, 1000);
+            setInterval(fetchTerminalData, 500);
         };
     </script>
 </body>

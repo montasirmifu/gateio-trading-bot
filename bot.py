@@ -53,7 +53,7 @@ GATEIO_KEY_VALID = True
 # ============================================
 USER_TOTAL_BALANCE      = 100.0
 USER_TRADE_SIZE         = 4.0
-USER_DAILY_TARGET       = 3.0
+USER_DAILY_TARGET       = 5.0
 USER_DAILY_LOSS_LIMIT   = 4.0
 USER_TAKE_PROFIT_PCT    = 2.0
 USER_STOP_LOSS_PCT      = 1.5
@@ -754,10 +754,12 @@ class TradingBotEngine:
         }
         for sym, d in defaults.items():
             self.market_snapshots[sym] = {
-                "price": d["price"], "rsi_1m": d["rsi_1m"], "macd_1m": d["macd_1m"],
-                "signal_1m": d["signal_1m"], "vol_ratio": d["vol_ratio"],
+                "price": d["price"], "rsi_1m": d["rsi_1m"],
+                "rsi_5m": round(d["rsi_1m"] * 0.98, 1), "rsi_15m": round(d["rsi_1m"] * 0.96, 1),
+                "macd_1m": d["macd_1m"], "signal_1m": d["signal_1m"], "vol_ratio": d["vol_ratio"],
                 "ema200_15m": d["ema200_15m"], "ema200_1h": d["ema200_1h"],
                 "sentiment": d["sentiment"], "matched_badges": 4,
+                "buy_badges": 4, "sell_badges": 0, "ob_ratio": 1.15,
                 "updated_at": get_bd_time_str()
             }
 
@@ -886,13 +888,18 @@ class TradingBotEngine:
                     sym = c.get("contract", "ETH_USDT")
                     pnl_val = float(c.get("pnl", 0.0))
                     close_p = float(c.get("close_price", 0.0))
+                    open_p = float(c.get("open_price", 0.0))
+                    if close_p <= 0:
+                        close_p = float(self.market_snapshots.get(sym, {}).get("price", 2440.0))
+                    if open_p <= 0:
+                        open_p = close_p
                     side = "BUY" if c.get("side","long") == "long" else "SELL"
                     st = "WIN" if pnl_val > 0 else ("LOSS" if pnl_val < 0 else "BREAKEVEN")
                     oid = str(c.get("order_id", c.get("id", f"{sym}_{c.get('time')}")))
                     seen_ids.add(oid)
                     last_trades_new.append({
                         "symbol": sym, "symbol_en": ASSET_NAMES_EN.get(sym, sym),
-                        "side": side, "entry_price": float(c.get("open_price", 0) or close_p),
+                        "side": side, "entry_price": open_p,
                         "exit_price": close_p, "pnl": round(pnl_val, 4), "status": st,
                         "data_source": "LIVE_GATEIO_API",
                         "created_at": str(c.get("close_time", get_bd_time_str())),
@@ -906,6 +913,10 @@ class TradingBotEngine:
                 for dt in db_trades:
                     sym, side = dt[0] or "ETH_USDT", dt[1] or "BUY"
                     ep, xp, pnl_v = float(dt[2] or 0), float(dt[3] or 0), float(dt[4] or 0)
+                    if ep <= 0:
+                        ep = float(self.market_snapshots.get(sym, {}).get("price", 100.0))
+                    if xp <= 0:
+                        xp = ep
                     st = "WIN" if pnl_v > 0 else "LOSS"
                     oid = f"db_{dt[11]}"
                     if oid not in seen_ids:
@@ -1008,10 +1019,13 @@ class TradingBotEngine:
 
         self.market_snapshots[symbol] = {
             "price": curr_price, "rsi_1m": round(rsi_1m, 1),
+            "rsi_5m": round(rsi_5m, 1), "rsi_15m": round(rsi_15m, 1),
             "macd_1m": round(macd_val, 2), "signal_1m": round(sig_val, 2),
             "vol_ratio": round(vol_ratio, 2), "ema200_15m": round(ema200_15m, 2),
             "ema200_1h": round(ema200_1h, 2), "atr": round(atr_val, 4),
             "sentiment": sentiment, "matched_badges": max(buy_badges, sell_badges),
+            "buy_badges": buy_badges, "sell_badges": sell_badges,
+            "ob_ratio": ob_depth["imbalance_ratio"],
             "updated_at": get_bd_time_str()
         }
 

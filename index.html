@@ -501,14 +501,14 @@
 
         <div class="trades-box">
             <div class="tabs-header">
-                <button class="tab-btn" id="tabApiBtn" onclick="switchMainRightTab('api')">📡 GATE.IO API LOGS</button>
                 <button class="tab-btn active" id="tabTradesBtn" onclick="switchMainRightTab('trades')">⚡ TRADES (<span id="topTradeHeaderCount">0</span>)</button>
+                <button class="tab-btn" onclick="switchMainRightTab('manual')" id="tabManual" style="background:#1e1b4b;border-color:#6366f1;color:#a5b4fc;font-weight:bold;">🛠️ MANUAL TRADE</button>
+                <button class="tab-btn" id="tabApiBtn" onclick="switchMainRightTab('api')">📡 GATE.IO API LOGS</button>
                 <button class="tab-btn" id="tabBacktestBtn" onclick="switchMainRightTab('backtest')">🧪 REAL BACKTEST</button>
                 <button class="tab-btn" id="tabPerAssetBtn" onclick="switchMainRightTab('per_asset')">🪙 PER-ASSET STATS</button>
                 <button class="tab-btn" id="tabReportBtn" onclick="switchMainRightTab('report')">📅 MONTHLY REPORT</button>
                 <button class="tab-btn" id="tabDbBtn" onclick="switchMainRightTab('db')">🗄️ LIVE DB LOGS</button>
                 <button class="tab-btn" id="tabNewsBtn" onclick="switchMainRightTab('news')">🌐 AI NEWS</button>
-                <button class="tab-btn" onclick="switchMainRightTab('manual')" id="tabManual">🛠️ MANUAL</button>
             </div>
 
             <div class="sub-filter-row" id="subFilterRow">
@@ -2039,27 +2039,37 @@
                         const mp = parseFloat(t.mark_price || t.entry_price || 0);
                         const pnl = parseFloat(t.pnl || 0);
                         const pnlPct = ep > 0 ? ((t.side === 'BUY' ? (mp - ep) : (ep - mp)) / ep * 100) : 0;
-                        const pnlColor = pnl >= 0 ? '#4ade80' : '#f87171';
+                        const isProf = pnl >= 0;
+                        const cardBorder = isProf ? '#22c55e' : '#eab308';
+                        const cardBg = isProf ? '#071810' : '#181206';
+                        const pnlColor = isProf ? '#4ade80' : '#fbbf24';
                         const tp = parseFloat(t.tp || 0);
                         const sl = parseFloat(t.sl || 0);
                         html += `
-                        <div style="background:#0c1424;border:1px solid ${pnl>=0?'#16a34a':'#dc2626'};border-radius:6px;padding:10px;margin-bottom:6px">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                                <input type="checkbox" class="trade-checkbox" data-symbol="${t.symbol}" style="accent-color:#00f2fe">
-                                <span style="font-weight:bold;color:#fff;font-size:.8rem">${t.side === 'BUY' ? '🟢' : '🔴'} ${t.symbol_en || t.symbol}</span>
-                                <span style="margin-left:auto;background:${t.side==='BUY'?'#052e16':'#450a0a'};color:${t.side==='BUY'?'#4ade80':'#f87171'};padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:bold">${t.side}</span>
+                        <div style="background:${cardBg};border:1.5px solid ${cardBorder};border-radius:8px;padding:12px;margin-bottom:8px;box-shadow:0 4px 15px ${isProf?'rgba(34,197,94,0.15)':'rgba(234,179,8,0.15)'};transition:all 0.2s;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <input type="checkbox" class="trade-checkbox" data-symbol="${t.symbol}" style="accent-color:#00f2fe;transform:scale(1.15);cursor:pointer;">
+                                    <span style="font-weight:bold;color:#fff;font-size:0.85rem;">${t.side === 'BUY' ? '⚡ BUY' : '🔴 SELL'} ${t.symbol_en || t.symbol}</span>
+                                </div>
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <span style="background:${isProf?'#052e16':'#451a03'};border:1px solid ${isProf?'#22c55e':'#f59e0b'};color:${pnlColor};padding:3px 8px;border-radius:4px;font-size:0.72rem;font-weight:bold;">
+                                        ${isProf ? '📈 +' + pnlPct.toFixed(2) + '% PROFIT' : '📉 ' + pnlPct.toFixed(2) + '% LOSS'}
+                                    </span>
+                                    <span style="background:${t.side==='BUY'?'#052e16':'#450a0a'};color:${t.side==='BUY'?'#4ade80':'#f87171'};border:1px solid ${t.side==='BUY'?'#16a34a':'#dc2626'};padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:bold;">${t.side}</span>
+                                </div>
                             </div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:.68rem;color:#94a3b8">
-                                <div>Entry: <b style="color:#fff">$${ep.toFixed(2)}</b></div>
-                                <div>Current: <b style="color:#00f2fe">$${mp.toFixed(2)}</b></div>
-                                <div>PnL: <b style="color:${pnlColor}">${pnl>=0?'+':''}$${pnl.toFixed(4)}</b></div>
-                                <div>PnL%: <b style="color:${pnlColor}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</b></div>
-                                <div>TP: <b style="color:#4ade80">$${tp.toFixed(2)}</b></div>
-                                <div>SL: <b style="color:#f87171">$${sl.toFixed(2)}</b></div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:0.72rem;color:#94a3b8;background:#090d1690;padding:8px 10px;border-radius:6px;">
+                                <div>Entry: <b style="color:#fff;">$${ep.toFixed(2)}</b></div>
+                                <div>Current: <b style="color:#00f2fe;">$${mp.toFixed(2)}</b></div>
+                                <div>Live PnL: <b style="color:${pnlColor};font-size:0.82rem;">${isProf?'+$':'-$'}${Math.abs(pnl).toFixed(4)}</b></div>
+                                <div>TP Target: <b style="color:#4ade80;">$${tp.toFixed(2)}</b></div>
+                                <div>SL Target: <b style="color:#f87171;">$${sl.toFixed(2)}</b></div>
+                                <div>Status: <b style="color:${pnlColor};">${isProf ? '🟢 IN PROFIT' : '🟡 IN DRAWDOWN'}</b></div>
                             </div>
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-                                <span style="font-size:.6rem;color:#64748b">${t.created_at || 'N/A'}</span>
-                                <button onclick="closeTrade('${t.symbol}')" style="background:#450a0a;color:#f87171;border:1px solid #dc2626;padding:4px 12px;border-radius:4px;font-size:.68rem;font-weight:bold;cursor:pointer">🔴 CLOSE</button>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                                <span style="font-size:0.65rem;color:#64748b;">📅 ${t.created_at || 'N/A'}</span>
+                                <button onclick="closeTrade('${t.symbol}', this)" style="background:#450a0a;color:#f87171;border:1px solid #dc2626;padding:5px 14px;border-radius:5px;font-size:0.72rem;font-weight:bold;cursor:pointer;transition:all 0.2s;">🔴 CLOSE</button>
                             </div>
                         </div>`;
                     }
@@ -2428,9 +2438,15 @@
             fetchTerminalData();
             setInterval(fetchTerminalData, 500);
         };
-        // Manual trade close functions
-        async function closeTrade(symbol) {
-            if (!confirm(`Close ${symbol} position?`)) return;
+        // ============================================
+        // 1-CLICK IN-DASHBOARD TRADE EXECUTION (ZERO BROWSER POPUPS)
+        // ============================================
+        async function closeTrade(symbol, btnEl) {
+            if (btnEl) {
+                btnEl.disabled = true;
+                btnEl.innerText = "⏳ CLOSING...";
+                btnEl.style.opacity = "0.7";
+            }
             try {
                 const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
                 const res = await fetch(url, {
@@ -2439,21 +2455,38 @@
                     body: JSON.stringify({symbol: symbol})
                 });
                 const data = await res.json();
-                if (data.success) {
-                    showNotification(`✅ Closed ${symbol} | PnL: $${data.closed[0].pnl}`, data.closed[0].pnl >= 0 ? 'green' : 'red');
+                if (data.success && data.closed && data.closed[0]) {
+                    const c = data.closed[0];
+                    const pnlVal = parseFloat(c.pnl || 0);
+                    const pnlStr = (pnlVal >= 0 ? '+$' : '-$') + Math.abs(pnlVal).toFixed(4);
+                    showNotification(`✅ Successfully Closed ${symbol} | PnL: ${pnlStr} USD`, pnlVal >= 0 ? 'green' : 'red');
+                    fetchTerminalData();
                 } else {
-                    showNotification(`❌ Failed to close ${symbol}: ${data.error || 'Unknown error'}`, 'red');
+                    showNotification(`❌ Could not close ${symbol}: ${data.error || (data.closed && data.closed[0] ? data.closed[0].error : 'Unknown error')}`, 'red');
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerText = "🔴 CLOSE";
+                        btnEl.style.opacity = "1";
+                    }
                 }
             } catch(e) {
-                showNotification(`❌ Error closing ${symbol}: ${e.message}`, 'red');
+                showNotification(`❌ Network error closing ${symbol}: ${e.message}`, 'red');
+                if (btnEl) {
+                    btnEl.disabled = false;
+                    btnEl.innerText = "🔴 CLOSE";
+                    btnEl.style.opacity = "1";
+                }
             }
         }
 
         async function closeSelectedTrades() {
             const checkboxes = document.querySelectorAll('.trade-checkbox:checked');
-            if (checkboxes.length === 0) { alert('No trades selected'); return; }
+            if (checkboxes.length === 0) {
+                showNotification('⚠️ Please select at least one trade checkbox first', 'amber');
+                return;
+            }
             const symbols = Array.from(checkboxes).map(cb => cb.dataset.symbol);
-            if (!confirm(`Close ${symbols.length} trade(s)?\n${symbols.join(', ')}`)) return;
+            showNotification(`⏳ Submitting close orders for ${symbols.length} selected trade(s)...`, 'blue');
             try {
                 const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
                 const res = await fetch(url, {
@@ -2462,20 +2495,27 @@
                     body: JSON.stringify({symbols: symbols})
                 });
                 const data = await res.json();
-                if (data.success) {
-                    const totalPnl = data.closed.reduce((sum, c) => sum + (c.pnl || 0), 0);
-                    showNotification(`✅ Closed ${symbols.length} trades | Total PnL: $${totalPnl.toFixed(2)}`, totalPnl >= 0 ? 'green' : 'red');
+                if (data.success || (data.closed && data.closed.some(c => c.success))) {
+                    const totalPnl = (data.closed || []).reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0);
+                    const pnlStr = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(4);
+                    showNotification(`✅ Closed ${symbols.length} Selected Trades | Total PnL: ${pnlStr} USD`, totalPnl >= 0 ? 'green' : 'red');
+                    fetchTerminalData();
+                } else {
+                    showNotification(`❌ Error closing trades: ${data.error || 'Request rejected'}`, 'red');
                 }
             } catch(e) {
-                showNotification(`❌ Error: ${e.message}`, 'red');
+                showNotification(`❌ Network error: ${e.message}`, 'red');
             }
         }
 
         async function closeAllTrades() {
-            const openTrades = lastReceivedTerminalData?.open_trades || [];
-            if (openTrades.length === 0) { alert('No open trades'); return; }
+            const openTrades = (lastReceivedTerminalData && lastReceivedTerminalData.open_trades) ? lastReceivedTerminalData.open_trades.filter(t => t && t.symbol) : [];
+            if (openTrades.length === 0) {
+                showNotification('ℹ️ No open positions to close right now', 'blue');
+                return;
+            }
             const symbols = openTrades.map(t => t.symbol);
-            if (!confirm(`⚠️ Close ALL ${symbols.length} open trades?\n${symbols.join(', ')}`)) return;
+            showNotification(`🔥 Emergency closing ALL ${symbols.length} open position(s)...`, 'amber');
             try {
                 const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
                 const res = await fetch(url, {
@@ -2484,12 +2524,16 @@
                     body: JSON.stringify({symbols: symbols})
                 });
                 const data = await res.json();
-                if (data.success) {
-                    const totalPnl = data.closed.reduce((sum, c) => sum + (c.pnl || 0), 0);
-                    showNotification(`✅ ALL trades closed | Total PnL: $${totalPnl.toFixed(2)}`, totalPnl >= 0 ? 'green' : 'red');
+                if (data.success || (data.closed && data.closed.some(c => c.success))) {
+                    const totalPnl = (data.closed || []).reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0);
+                    const pnlStr = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(4);
+                    showNotification(`🔥 ALL ${symbols.length} Positions Closed | Net PnL: ${pnlStr} USD`, totalPnl >= 0 ? 'green' : 'red');
+                    fetchTerminalData();
+                } else {
+                    showNotification(`❌ Failed to close all positions: ${data.error || 'Failed'}`, 'red');
                 }
             } catch(e) {
-                showNotification(`❌ Error: ${e.message}`, 'red');
+                showNotification(`❌ Network error: ${e.message}`, 'red');
             }
         }
 
@@ -2498,12 +2542,45 @@
             checkboxes.forEach(cb => cb.checked = el.checked);
         }
 
-        function showNotification(msg, color) {
+        function showNotification(msg, type) {
+            const existing = document.querySelectorAll('.dashboard-toast-notification');
+            existing.forEach(e => e.remove());
+
             const div = document.createElement('div');
-            div.style.cssText = `position:fixed;top:20px;right:20px;z-index:999999;padding:12px 20px;border-radius:8px;font-weight:bold;font-size:0.85rem;color:#fff;background:${color==='green'?'#052e16':'#450a0a'};border:1px solid ${color==='green'?'#16a34a':'#dc2626'};box-shadow:0 4px 12px rgba(0,0,0,0.5);animation:fadeIn 0.3s`;
+            div.className = 'dashboard-toast-notification';
+            let bg = '#0f172a';
+            let border = '#38bdf8';
+            let textColor = '#fff';
+            if (type === 'green') { bg = '#052e16'; border = '#22c55e'; }
+            else if (type === 'red') { bg = '#450a0a'; border = '#ef4444'; }
+            else if (type === 'amber') { bg = '#451a03'; border = '#f59e0b'; }
+            else if (type === 'blue') { bg = '#082f49'; border = '#0ea5e9'; }
+
+            div.style.cssText = `
+                position: fixed;
+                top: 24px;
+                right: 24px;
+                z-index: 9999999;
+                padding: 14px 22px;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 0.82rem;
+                color: ${textColor};
+                background: ${bg};
+                border: 1.5px solid ${border};
+                box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 15px ${border}44;
+                backdrop-filter: blur(10px);
+                transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                animation: toastSlideDown 0.35s ease-out;
+                max-width: 90vw;
+            `;
             div.innerText = msg;
             document.body.appendChild(div);
-            setTimeout(() => div.remove(), 4000);
+            setTimeout(() => {
+                div.style.opacity = '0';
+                div.style.transform = 'translateY(-10px)';
+                setTimeout(() => div.remove(), 350);
+            }, 4000);
         }
     </script>
 </body>

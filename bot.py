@@ -59,9 +59,9 @@ USER_TAKE_PROFIT_PCT    = 1.5
 USER_STOP_LOSS_PCT      = 0.8
 USER_TRAILING_PCT       = 2.0
 USER_MAX_OPEN_TRADES    = 4
-USER_BADGE_THRESHOLD    = 4    # Reduced from 5 (Fixes low frequency)
-USER_COOLDOWN_SECS      = 120
-USER_ACTIVE_HOURS_ONLY  = True
+USER_BADGE_THRESHOLD    = 2    # Relaxed to 2 for high-frequency trading
+USER_COOLDOWN_SECS      = 30
+USER_ACTIVE_HOURS_ONLY  = False  # 24/7 Unlimited Trading
 
 # ============================================
 # STAIRCASE TARGETS & ADVANCED CONSTANTS
@@ -120,12 +120,12 @@ def get_compound_next_tier(balance):
 # ASSET TIER CLASSIFICATION & PER-TIER CONFIG
 # ============================================
 ASSET_TIERS = {
-    # TIER 1: LARGE CAP — Low volatility, need wider SL, slower
+    # TIER 1: LARGE CAP — High liquidity
     "LARGE_CAP": {
-        "tp_pct": 1.8, "sl_pct": 1.0, "cooldown": 180,
-        "rsi_buy_1m": 35, "rsi_buy_5m": 40, "rsi_buy_15m": 43,
-        "rsi_sell_1m": 65, "rsi_sell_5m": 60, "rsi_sell_15m": 57,
-        "vol_spike": 1.3,
+        "tp_pct": 1.8, "sl_pct": 1.0, "cooldown": 45,
+        "rsi_buy_1m": 48, "rsi_buy_5m": 50,
+        "rsi_sell_1m": 52, "rsi_sell_5m": 50,
+        "vol_spike": 1.1,
         "assets": {
             "BTC_USDT":  "Bitcoin (BTC)",
             "ETH_USDT":  "Ethereum (ETH)",
@@ -134,10 +134,10 @@ ASSET_TIERS = {
     },
     # TIER 2: MID CAP — Moderate volatility, balanced
     "MID_CAP": {
-        "tp_pct": 1.5, "sl_pct": 0.8, "cooldown": 120,
-        "rsi_buy_1m": 38, "rsi_buy_5m": 42, "rsi_buy_15m": 45,
-        "rsi_sell_1m": 62, "rsi_sell_5m": 58, "rsi_sell_15m": 55,
-        "vol_spike": 1.2,
+        "tp_pct": 1.5, "sl_pct": 0.8, "cooldown": 30,
+        "rsi_buy_1m": 48, "rsi_buy_5m": 50,
+        "rsi_sell_1m": 52, "rsi_sell_5m": 50,
+        "vol_spike": 1.0,
         "assets": {
             "SOL_USDT":  "Solana (SOL)",
             "XRP_USDT":  "Ripple (XRP)",
@@ -161,10 +161,10 @@ ASSET_TIERS = {
     },
     # TIER 3: SMALL/MEME CAP — High volatility, fast moves, tighter TP
     "MEME_CAP": {
-        "tp_pct": 1.2, "sl_pct": 0.6, "cooldown": 60,
-        "rsi_buy_1m": 40, "rsi_buy_5m": 44, "rsi_buy_15m": 48,
-        "rsi_sell_1m": 60, "rsi_sell_5m": 56, "rsi_sell_15m": 52,
-        "vol_spike": 1.0,
+        "tp_pct": 1.2, "sl_pct": 0.6, "cooldown": 20,
+        "rsi_buy_1m": 50, "rsi_buy_5m": 52,
+        "rsi_sell_1m": 50, "rsi_sell_5m": 48,
+        "vol_spike": 0.9,
         "assets": {
             "DOGE_USDT": "Dogecoin (DOGE)",
             "PEPE_USDT": "PEPE (PEPE)",
@@ -178,10 +178,10 @@ ASSET_TIERS = {
     },
     # TIER 4: COMMODITY/INDEX — Very different behavior
     "COMMODITY": {
-        "tp_pct": 2.0, "sl_pct": 1.2, "cooldown": 240,
-        "rsi_buy_1m": 33, "rsi_buy_5m": 38, "rsi_buy_15m": 42,
-        "rsi_sell_1m": 67, "rsi_sell_5m": 62, "rsi_sell_15m": 58,
-        "vol_spike": 1.5,
+        "tp_pct": 2.0, "sl_pct": 1.2, "cooldown": 60,
+        "rsi_buy_1m": 46, "rsi_buy_5m": 48,
+        "rsi_sell_1m": 54, "rsi_sell_5m": 52,
+        "vol_spike": 1.1,
         "assets": {
             "XAU_USDT":  "Gold (XAU)",
         }
@@ -1101,22 +1101,59 @@ class TradingBotEngine:
                     })
             self.cached_open_trades = open_trades_new
             
-            # Sync Gate.io positions into open_trades for SL/TP monitoring (on startup)
-            if not self.open_trades and self.cached_open_trades:
-                for pos in self.cached_open_trades:
-                    sym = pos.get('symbol')
-                    if sym and pos.get('status') == 'OPEN' and sym not in self.open_trades:
-                        self.open_trades[sym] = {
-                            'symbol': sym,
-                            'side': pos.get('side', 'BUY'),
-                            'entry_price': float(pos.get('entry_price', 0)),
-                            'size': int(pos.get('size', 1)),
-                            'tp': float(pos.get('tp', 0)),
-                            'sl': float(pos.get('sl', 0)),
-                            'created_at': pos.get('created_at', ''),
-                            'peak_pnl': 0.0
-                        }
-                        logger.info(f"[SYNC] Recovered position: {sym} {pos.get('side')} @ ${pos.get('entry_price')}")
+            # Continuously sync ALL Gate.io positions into open_trades & check Auto-Close
+            for pos in self.cached_open_trades:
+                sym = pos.get('symbol')
+                if not sym or pos.get('status') != 'OPEN': continue
+                side = pos.get('side', 'BUY')
+                entry_p = float(pos.get('entry_price', 0.0))
+                mark_p = float(pos.get('mark_price', entry_p))
+                sz = int(pos.get('size', 1))
+                if entry_p <= 0 or mark_p <= 0: continue
+                
+                tier_cfg = get_asset_config(sym)
+                tp_pct = tier_cfg.get("tp_pct", USER_TAKE_PROFIT_PCT)
+                sl_pct = tier_cfg.get("sl_pct", USER_STOP_LOSS_PCT)
+                
+                # Sync into self.open_trades if missing
+                if sym not in self.open_trades:
+                    tp_val, sl_val = set_tpsl(sym, entry_p, side, tier_cfg=tier_cfg)
+                    self.open_trades[sym] = {
+                        'symbol': sym,
+                        'symbol_en': ASSET_NAMES_EN.get(sym, sym),
+                        'side': side,
+                        'entry_price': entry_p,
+                        'size': sz,
+                        'tp': tp_val,
+                        'sl': sl_val,
+                        'created_at': pos.get('created_at', get_bd_time_str()),
+                        'peak_pnl': 0.0
+                    }
+                    logger.info(f"[SYNC] Active position synced: {sym} {side} @ ${entry_p} | TP={tp_val} SL={sl_val}")
+                
+                # 300ms High-Frequency Auto-Close Execution
+                pnl_pct = ((mark_p - entry_p) / entry_p) * 100 if side == "BUY" else ((entry_p - mark_p) / entry_p) * 100
+                pos_pnl_usd = float(pos.get("pnl", 0.0))
+                
+                hit_tp = pnl_pct >= tp_pct
+                hit_sl = pnl_pct <= -sl_pct
+                
+                if hit_tp or hit_sl:
+                    reason = "AUTO_TP_HIT" if hit_tp else "AUTO_SL_HIT"
+                    close_side = "SELL" if side == "BUY" else "BUY"
+                    logger.info(f"[AUTO CLOSE] {sym} {side}: PnL={pnl_pct:+.2f}% (Limit: +{tp_pct}% / -{sl_pct}%) => Executing close order...")
+                    close_res = place_order(sym, close_side, sz)
+                    if close_res:
+                        self.daily_pnl += pos_pnl_usd
+                        self.daily_trade_count += 1
+                        if sym in self.open_trades:
+                            del self.open_trades[sym]
+                        execute_db_query("""
+                            INSERT INTO bot_trades (symbol, side, entry_price, exit_price, pnl, status, exit_reason, size, created_at)
+                            VALUES (%s, %s, %s, %s, %s, 'CLOSED', %s, %s, (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours'));
+                        """, (str(sym), str(side), float(entry_p), float(mark_p), float(pos_pnl_usd), str(reason), float(sz)))
+                        send_telegram_alert(f"{'🟢' if hit_tp else '🔴'} <b>AUTO CLOSE ({reason})</b>\n<b>Asset:</b> {sym}\n<b>PnL:</b> {pnl_pct:+.2f}% (${pos_pnl_usd:+.2f} USD)")
+                        self.check_staircase()
         except Exception as e:
             logger.error(f"[CACHE] Positions error: {e}")
             self.cached_open_trades = []
@@ -1200,15 +1237,9 @@ class TradingBotEngine:
 
     def process_symbol(self, symbol):
         self.check_daily_midnight_reset()
-        if USER_ACTIVE_HOURS_ONLY:
-            bd_hour = get_bd_time().hour
-            if bd_hour < 10 or bd_hour >= 22:  # Only trade 10AM-10PM BST
-                return
         tier_cfg = get_asset_config(symbol)
-        tier_cooldown = tier_cfg["cooldown"]
-        if symbol in self.cooldowns:
-            if time.time() - self.cooldowns[symbol] < tier_cooldown:
-                return
+        tier_cooldown = tier_cfg.get("cooldown", 30)
+
         df_1m  = fetch_live_public_klines(symbol, interval="1m", limit=100)
         df_5m  = fetch_live_public_klines(symbol, interval="5m", limit=100)
         df_15m = fetch_live_public_klines(symbol, interval="15m", limit=100)
@@ -1232,55 +1263,49 @@ class TradingBotEngine:
             rsi_5m = float(calculate_rsi(df_5m['close']).iloc[-1])
         else:
             rsi_5m = 50.0
-            logger.warning(f"[INDICATOR] {symbol}: Insufficient 5m candles for RSI ({len(df_5m) if df_5m is not None else 0})")
 
         if df_15m is not None and len(df_15m) > 20:
             rsi_15m = float(calculate_rsi(df_15m['close']).iloc[-1])
         else:
             rsi_15m = 50.0
-            logger.warning(f"[INDICATOR] {symbol}: Insufficient 15m candles for RSI ({len(df_15m) if df_15m is not None else 0})")
 
-        # MANDATORY: Multi-Timeframe RSI must align (not optional badge anymore)
-        mtf_rsi_buy  = (float(rsi_1m) < tier_cfg["rsi_buy_1m"]) and (rsi_5m < tier_cfg["rsi_buy_5m"]) and (rsi_15m < tier_cfg["rsi_buy_15m"])
-        mtf_rsi_sell = (float(rsi_1m) > tier_cfg["rsi_sell_1m"]) and (rsi_5m > tier_cfg["rsi_sell_5m"]) and (rsi_15m > tier_cfg["rsi_sell_15m"])
+        # HIGH-FREQUENCY MOMENTUM / PULLBACK SIGNALS
+        mtf_rsi_buy  = (float(rsi_1m) <= tier_cfg["rsi_buy_1m"]) or (rsi_5m <= tier_cfg["rsi_buy_5m"]) or (macd_val > sig_val)
+        mtf_rsi_sell = (float(rsi_1m) >= tier_cfg["rsi_sell_1m"]) or (rsi_5m >= tier_cfg["rsi_sell_5m"]) or (macd_val < sig_val)
         
-        # VOLUME SPIKE DETECTION: 3x volume = instant high-confidence signal
-        vol_spike_threshold = tier_cfg["vol_spike"]
-        is_volume_spike = vol_ratio >= 3.0  # 3x average = massive spike
+        # VOLUME SPIKE DETECTION: 1.5x volume = instant trade booster
+        vol_spike_threshold = tier_cfg.get("vol_spike", 1.0)
+        is_volume_spike = vol_ratio >= 1.5
         is_volume_ok = vol_ratio >= vol_spike_threshold
         
-        sentiment = "POSITIVE" if macd_val > sig_val else "NEUTRAL"
+        sentiment = "POSITIVE" if macd_val > sig_val else "NEGATIVE" if macd_val < sig_val else "NEUTRAL"
 
-        # Badge scoring (RSI is now SEPARATE and MANDATORY)
+        # Badge scoring
         buy_confirmations = sum([
-            macd_val > sig_val,                                    # MACD crossover
+            macd_val > sig_val,                                    # MACD Bullish Crossover
             is_volume_ok,                                          # Volume above threshold
             curr_price > ema200_15m,                               # Price above 15m EMA200
             curr_price > ema200_1h,                                # Price above 1h EMA200
-            ob_depth["imbalance_ratio"] >= 1.1,                    # Order book buy pressure
+            ob_depth["imbalance_ratio"] >= 1.05,                   # Order book buy pressure
             bool(ob_depth["whale_bid"]),                            # Whale buying
             curr_price > df_1m['open'].iloc[-1],                   # Bullish candle
-            abs(curr_price - support_level) / max(curr_price, 1) <= 0.02  # Near support
+            abs(curr_price - support_level) / max(curr_price, 1) <= 0.03  # Near support
         ])
 
         sell_confirmations = sum([
-            macd_val < sig_val,
-            is_volume_ok,
-            curr_price < ema200_15m,
-            curr_price < ema200_1h,
-            ob_depth["imbalance_ratio"] <= 0.9,
-            bool(ob_depth["whale_ask"]),
-            curr_price < df_1m['open'].iloc[-1],
-            abs(curr_price - resistance_level) / max(curr_price, 1) <= 0.02
+            macd_val < sig_val,                                    # MACD Bearish Crossover
+            is_volume_ok,                                          # Volume above threshold
+            curr_price < ema200_15m,                               # Price below 15m EMA200
+            curr_price < ema200_1h,                                # Price below 1h EMA200
+            ob_depth["imbalance_ratio"] <= 0.95,                   # Order book sell pressure
+            bool(ob_depth["whale_ask"]),                            # Whale selling
+            curr_price < df_1m['open'].iloc[-1],                   # Bearish candle
+            abs(curr_price - resistance_level) / max(curr_price, 1) <= 0.03 # Near resistance
         ])
         
-        # VOLUME SPIKE BONUS: If 3x volume spike, reduce required confirmations by 2
-        required_badges = self.badge_threshold
-        if is_volume_spike:
-            required_badges = max(2, required_badges - 2)
-            logger.info(f"[VOL SPIKE] {symbol}: {vol_ratio:.1f}x volume! Badge req reduced to {required_badges}")
+        # REQUIRED CONFIRMATIONS: 2 badges (or 1 on volume spike)
+        required_badges = 1 if is_volume_spike else self.badge_threshold
 
-        # For market_snapshots, use max of buy/sell badges + RSI status
         total_buy = buy_confirmations + (1 if mtf_rsi_buy else 0)
         total_sell = sell_confirmations + (1 if mtf_rsi_sell else 0)
 
@@ -1296,14 +1321,21 @@ class TradingBotEngine:
             "updated_at": get_bd_time_str()
         }
 
+        # 1. ALWAYS monitor existing position if open
         if symbol in self.open_trades:
             self.monitor_open_position(symbol, curr_price)
             return
 
+        # 2. Check if maximum 4 open trades are already active
         if not self.bot_active or len(self.open_trades) >= self.max_open_trades:
             return
 
-        # RSI MUST match + enough confirmation badges
+        # 3. Check cooldown before placing a NEW trade
+        if symbol in self.cooldowns:
+            if time.time() - self.cooldowns[symbol] < tier_cooldown:
+                return
+
+        # 4. Execute high-probability trade
         if mtf_rsi_buy and buy_confirmations >= required_badges:
             self.execute_trade(symbol, "BUY", curr_price, total_buy)
         elif mtf_rsi_sell and sell_confirmations >= required_badges:

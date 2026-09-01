@@ -347,6 +347,42 @@
             <div class="badge-value" id="sentVal">POSITIVE</div>
             <div class="badge-target">CRITERIA: POSITIVE / NEGATIVE</div>
         </div>
+    <!-- MULTI-ACCOUNT SAAS SELECTOR & DYNAMIC 5% COMPOUND PROGRESS v5.0 -->
+    <div style="background: #0d1829; border: 1.5px solid #0284c7; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-items: center; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.15);">
+        <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--cyan-accent); font-weight: bold; font-size: 0.85rem;">🏦 ACTIVE ACCOUNT:</span>
+                <select id="accountSelector" onchange="switchAccount(this.value)" style="background: #161e2e; color: #fff; border: 1px solid #0284c7; padding: 4px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.8rem;">
+                    <option value="59787607">59787607 (Default)</option>
+                </select>
+            </div>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">
+                Engine Mode: <span id="safeRecoveryBadge" style="color: #4ade80; font-weight: bold;">🟢 NORMAL (HIGH-FREQUENCY)</span>
+            </div>
+        </div>
+        <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: bold;">
+                <span style="color: var(--cyan-accent);">📈 5% COMPOUND PROGRESS:</span>
+                <span id="compoundStatus" style="color: #4ade80;">$5.00 → $5.50 (0%)</span>
+            </div>
+            <div style="width: 100%; background: #1e293b; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px;">
+                <div id="compoundProgressBar" style="height: 100%; background: linear-gradient(90deg, #0284c7, #00e676); width: 0%; transition: width 0.4s ease;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.68rem; color: #94a3b8; margin-top: 3px;">
+                <span>Trade Size: <b id="currentSizeText" style="color: #4ade80;">$5.00</b> (5%)</span>
+                <span>Next 10% Tier: <b id="nextSizeText" style="color: #00f2fe;">$5.50</b> @ $<span id="nextThresholdText">110.00</span></span>
+            </div>
+        </div>
+        <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8;">
+                <span>Active Margin: <b id="activeMarginText" style="color: #f59e0b;">$0.00</b> / <span id="maxMarginText">$40.00</span> (40% Cap)</span>
+                <span>Daily Loss Limit: <b id="dailyLossLimitText" style="color: #f87171;">-$4.00</b> (4%)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">
+                <span>🔒 Safe Vault Reserve: <b id="safeVaultReserveText" style="color: #4ade80;">$60.00</b> (60% Locked)</span>
+                <span>Account Win Rate: <b id="accountWinRateText" style="color: #fbbf24;">0.0%</b></span>
+            </div>
+        </div>
     </div>
 
     <!-- GATE.IO DIRECT REAL-TIME BROKER ASSETS PANEL (100% 1:1 LIVE API SYNC) -->
@@ -1466,11 +1502,84 @@
                 stairEl.innerHTML = stairHtml;
             }
 
+            // MULTI-ACCOUNT & DYNAMIC 5% COMPOUND UI UPDATE v5.0
+            try {
+                // 1. Account Selector Sync
+                const accSel = document.getElementById('accountSelector');
+                if (accSel && data.accounts && Object.keys(data.accounts).length > 0) {
+                    const curAcc = data.current_account_id || Object.keys(data.accounts)[0];
+                    const optHtml = Object.keys(data.accounts).map(aid => 
+                        `<option value="${aid}" ${aid === curAcc ? 'selected' : ''}>${aid} ($${parseFloat(data.accounts[aid].balance||0).toFixed(2)})</option>`
+                    ).join('');
+                    if (accSel.innerHTML !== optHtml && !accSel.matches(':focus')) {
+                        accSel.innerHTML = optHtml;
+                    }
+                    if (data.accounts[curAcc]) {
+                        const accData = data.accounts[curAcc];
+                        if (document.getElementById('accountWinRateText')) {
+                            document.getElementById('accountWinRateText').innerText = `${accData.win_rate || 0}% (${accData.wins || 0}W / ${accData.losses || 0}L)`;
+                        }
+                    }
+                }
+
+                // 2. Safe Recovery Mode Badge
+                const sRecBadge = document.getElementById('safeRecoveryBadge');
+                if (sRecBadge) {
+                    if (data.safe_recovery_mode) {
+                        sRecBadge.innerHTML = '🛡️ SAFE RECOVERY (A+ SIGNALS ONLY)';
+                        sRecBadge.style.color = '#fbbf24';
+                    } else {
+                        sRecBadge.innerHTML = '🟢 NORMAL (HIGH-FREQUENCY)';
+                        sRecBadge.style.color = '#4ade80';
+                    }
+                }
+
+                // 3. Dynamic 5% Compound Progress Bar
+                const cmpSize = parseFloat(data.compound_trade_size || data.trade_usd_size || 5.0);
+                const cmpNext = parseFloat(data.compound_next_threshold || (data.compound_info && data.compound_info.next_threshold) || (totalEq * 1.1));
+                const cmpNextSize = parseFloat(data.compound_next_size || (data.compound_info && data.compound_info.next_size) || (cmpNext * 0.05));
+                const cmpProg = Math.min(100, Math.max(0, parseFloat(data.compound_progress || (data.compound_info && data.compound_info.progress) || 0)));
+
+                if (document.getElementById('compoundStatus')) {
+                    document.getElementById('compoundStatus').innerText = `$${cmpSize.toFixed(2)} → $${cmpNextSize.toFixed(2)} (${cmpProg.toFixed(0)}%)`;
+                }
+                if (document.getElementById('compoundProgressBar')) {
+                    document.getElementById('compoundProgressBar').style.width = `${cmpProg}%`;
+                }
+                if (document.getElementById('currentSizeText')) {
+                    document.getElementById('currentSizeText').innerText = `$${cmpSize.toFixed(2)}`;
+                }
+                if (document.getElementById('nextSizeText')) {
+                    document.getElementById('nextSizeText').innerText = `$${cmpNextSize.toFixed(2)}`;
+                }
+                if (document.getElementById('nextThresholdText')) {
+                    document.getElementById('nextThresholdText').innerText = cmpNext.toFixed(2);
+                }
+
+                // 4. Margin Allocation & Safe Vault Meters (40% Cap / 60% Vault)
+                const activeMargin = parseFloat(data.active_margin || usedMargin || 0);
+                const maxMargin = parseFloat(data.max_active_margin || maxTradingLimit || (totalEq * 0.4));
+                const safeVaultBal = parseFloat(data.safe_vault_reserve || data.safe_capital || safeVault || (totalEq * 0.6));
+                const dailyLossLimVal = parseFloat(data.daily_loss_limit || (totalEq * 0.04));
+
+                if (document.getElementById('activeMarginText')) {
+                    document.getElementById('activeMarginText').innerText = `$${activeMargin.toFixed(2)}`;
+                }
+                if (document.getElementById('maxMarginText')) {
+                    document.getElementById('maxMarginText').innerText = `$${maxMargin.toFixed(2)}`;
+                }
+                if (document.getElementById('safeVaultReserveText')) {
+                    document.getElementById('safeVaultReserveText').innerText = `$${safeVaultBal.toFixed(2)}`;
+                }
+                if (document.getElementById('dailyLossLimitText')) {
+                    document.getElementById('dailyLossLimitText').innerText = `-$${dailyLossLimVal.toFixed(2)}`;
+                }
+            } catch(compErr) { console.error('Compound UI update error:', compErr); }
+
             if (document.activeElement !== document.getElementById('inTradeSize') && document.activeElement !== document.getElementById('inDailyTarget')) {
                 if (document.getElementById('inTradeSize')) document.getElementById('inTradeSize').value = currentTradeSize;
                 if (document.getElementById('inDailyTarget')) document.getElementById('inDailyTarget').value = data.daily_target || 5.0;
             }
-
 
             newsCacheMap = data.ai_news || {};
             latestAssetSnapshot = data.assets || latestAssetSnapshot || {};
@@ -2299,6 +2408,27 @@
 
         function openKeysModal() { document.getElementById('keysModal').classList.add('open'); }
         function closeKeysModal() { document.getElementById('keysModal').classList.remove('open'); }
+
+        async function switchAccount(accId) {
+            if (!accId) return;
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/switch_account';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({account_id: accId})
+                });
+                const d = await res.json();
+                if (d.success) {
+                    showInstantToast(`🏦 Switched to Gate.io Account: ${accId}`);
+                    fetchTerminalData();
+                } else {
+                    showInstantToast(`❌ Failed to switch account: ${d.error || 'Unknown'}`);
+                }
+            } catch(e) {
+                showInstantToast(`❌ Error switching account: ${e.message}`);
+            }
+        }
 
         async function saveApiKeys(e) {
             e.preventDefault();

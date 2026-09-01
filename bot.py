@@ -39,7 +39,7 @@ class NpEncoder(json.JSONEncoder):
 # ============================================
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.usjrttgfmzqcqxigjryh:%24H-EEvz%3F%5ED%26t65w@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
 API_KEY = os.environ.get("GATEIO_API_KEY", "31f9642e6be6e52f9b38086cbe5cc301")
-SECRET_KEY = os.environ.get("GATEIO_SECRET_KEY", "803a67ce0ff43f360efbeea9dbf4efac5cb1a1efcfcd3a8be720aeb4db59a35e")
+SECRET_KEY = os.environ.get("GATEIO_SECRET_KEY", "48a8742cea8d553bd128f5a1f73cfa16ed40cc20a3ccf861eae1cebf7e49a8fe")
 PASSPHRASE = os.environ.get("GATEIO_PASSPHRASE", "MyFund2024Secure")
 BASE_URL = os.environ.get("GATEIO_BASE_URL", "https://api-testnet.gateapi.io")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7649514782:AAG-x04Sg1xW7t5xL4jY9aZbK2mN3v4P5q0")
@@ -1348,16 +1348,18 @@ def switch_environment(mode, new_api_key=None, new_secret_key=None, new_passphra
     if mode_upper in ["PRODUCTION", "LIVE", "REAL"]:
         ENVIRONMENT_MODE = "PRODUCTION"
         BASE_URL = "https://api.gateio.ws"
+        if new_api_key and str(new_api_key).strip():
+            API_KEY = str(new_api_key).strip()
+        if new_secret_key and str(new_secret_key).strip():
+            SECRET_KEY = str(new_secret_key).strip()
+        if new_passphrase and str(new_passphrase).strip():
+            PASSPHRASE = str(new_passphrase).strip()
     else:
         ENVIRONMENT_MODE = "TESTNET"
         BASE_URL = "https://api-testnet.gateapi.io"
-
-    if new_api_key and str(new_api_key).strip():
-        API_KEY = str(new_api_key).strip()
-    if new_secret_key and str(new_secret_key).strip():
-        SECRET_KEY = str(new_secret_key).strip()
-    if new_passphrase and str(new_passphrase).strip():
-        PASSPHRASE = str(new_passphrase).strip()
+        API_KEY = str(new_api_key).strip() if (new_api_key and str(new_api_key).strip()) else "31f9642e6be6e52f9b38086cbe5cc301"
+        SECRET_KEY = str(new_secret_key).strip() if (new_secret_key and str(new_secret_key).strip()) else "48a8742cea8d553bd128f5a1f73cfa16ed40cc20a3ccf861eae1cebf7e49a8fe"
+        PASSPHRASE = str(new_passphrase).strip() if (new_passphrase and str(new_passphrase).strip()) else "MyFund2024Secure"
 
     logger.info("=" * 65)
     logger.info(f" [ENVIRONMENT SWITCH] Active Mode: {ENVIRONMENT_MODE} | Base URL: {BASE_URL}")

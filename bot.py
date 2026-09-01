@@ -52,13 +52,13 @@ GATEIO_KEY_VALID = True
 # UPDATED CONFIGURATION (FIXES FREQUENCY & WIN RATE)
 # ============================================
 USER_TOTAL_BALANCE      = 100.0
-USER_TRADE_SIZE         = 4.0
+USER_TRADE_SIZE         = 5.0
 USER_DAILY_TARGET       = 5.0
 USER_DAILY_LOSS_LIMIT   = 4.0
-USER_TAKE_PROFIT_PCT    = 2.0
-USER_STOP_LOSS_PCT      = 1.5
+USER_TAKE_PROFIT_PCT    = 1.5
+USER_STOP_LOSS_PCT      = 0.8
 USER_TRAILING_PCT       = 2.0
-USER_MAX_OPEN_TRADES    = 3
+USER_MAX_OPEN_TRADES    = 4
 USER_BADGE_THRESHOLD    = 4    # Reduced from 5 (Fixes low frequency)
 USER_COOLDOWN_SECS      = 120
 USER_ACTIVE_HOURS_ONLY  = True
@@ -66,7 +66,7 @@ USER_ACTIVE_HOURS_ONLY  = True
 # ============================================
 # STAIRCASE TARGETS & ADVANCED CONSTANTS
 # ============================================
-BASE_TRADE_SIZE      = 4.0
+BASE_TRADE_SIZE      = 5.0
 STAIRCASE_TARGETS    = [5.0, 6.0, 7.0, 8.0]
 STAIRCASE_SL_LEVELS  = {1: 4.50, 2: 5.50, 3: 6.50, 4: 7.50}
 STAIRCASE_SIZES      = {0: 5.0, 1: 7.0, 2: 8.0, 3: 5.0, 4: 2.0}
@@ -85,21 +85,24 @@ PROFIT_LOCK_OFFSET   = 0.25   # SL trails $0.25 behind the lock level
 # COMPOUND TRADE SIZE TIERS
 # ============================================
 COMPOUND_TIERS = [
-    (0, 249, 5.0),
-    (250, 499, 10.0),
-    (500, 999, 20.0),
-    (1000, 2499, 40.0),
-    (2500, 4999, 100.0),
-    (5000, 9999, 200.0),
-    (10000, float('inf'), 400.0),
+    (0,    249,  5.0),
+    (250,  499,  8.0),
+    (500,  999,  15.0),
+    (1000, 2499, 30.0),
+    (2500, 4999, 60.0),
+    (5000, 9999, 120.0),
+    (10000, 999999, 250.0),
 ]
 
 def get_compound_trade_size(balance):
     """Returns trade size based on account balance tier."""
     for low, high, size in COMPOUND_TIERS:
-        if low <= balance <= high:
+        if balance >= low and balance <= high:
             return size
-    return 5.0
+    # Fallback: use last tier if above all
+    if balance > COMPOUND_TIERS[-1][1]:
+        return COMPOUND_TIERS[-1][2]
+    return COMPOUND_TIERS[0][2]  # minimum
 
 def get_compound_next_tier(balance):
     """Returns (next_threshold, next_size, progress_pct) for compound sizing."""
@@ -113,42 +116,92 @@ def get_compound_next_tier(balance):
             return 0, size, 100.0
     return 250, 10.0, 0.0
 
-ASSET_NAMES_EN = {
-    # CRYPTO (12)
-    "BTC_USDT":   "Bitcoin (BTC/USDT)",
-    "ETH_USDT":   "Ethereum (ETH/USDT)",
-    "SOL_USDT":   "Solana (SOL/USDT)",
-    "XRP_USDT":   "Ripple (XRP/USDT)",
-    "BNB_USDT":   "BNB (BNB/USDT)",
-    "DOGE_USDT":  "Dogecoin (DOGE/USDT)",
-    "ADA_USDT":   "Cardano (ADA/USDT)",
-    "LINK_USDT":  "Chainlink (LINK/USDT)",
-    "AVAX_USDT":  "Avalanche (AVAX/USDT)",
-    "DOT_USDT":   "Polkadot (DOT/USDT)",
-    "NEAR_USDT":  "NEAR Protocol (NEAR/USDT)",
-    "APT_USDT":   "Aptos (APT/USDT)",
-    # STOCKS (10)
-    "AAPL_USDT":  "Apple Inc (AAPL/USDT)",
-    "NVDA_USDT":  "Nvidia Corp (NVDA/USDT)",
-    "TSLA_USDT":  "Tesla Inc (TSLA/USDT)",
-    "AMZN_USDT":  "Amazon Inc (AMZN/USDT)",
-    "MSFT_USDT":  "Microsoft (MSFT/USDT)",
-    "GOOG_USDT":  "Alphabet Inc (GOOG/USDT)",
-    "META_USDT":  "Meta Platforms (META/USDT)",
-    "AMD_USDT":   "AMD Inc (AMD/USDT)",
-    "AVGO_USDT":  "Broadcom Inc (AVGO/USDT)",
-    "NFLX_USDT":  "Netflix Inc (NFLX/USDT)",
-    # COMMODITIES & INDICES (8)
-    "XAU_USDT":   "Gold (XAU/USDT)",
-    "XAG_USDT":   "Silver (XAG/USDT)",
-    "WTI_USDT":   "Crude Oil (WTI/USDT)",
-    "US100_USDT": "Nasdaq 100 (US100/USDT)",
-    "SP500_USDT": "S&P 500 (SP500/USDT)",
-    "IBIT_USDT":  "iShares Bitcoin (IBIT/USDT)",
-    "SLV_USDT":   "Silver Trust (SLV/USDT)",
-    "US30_USDT":  "Dow Jones (US30/USDT)",
+# ============================================
+# ASSET TIER CLASSIFICATION & PER-TIER CONFIG
+# ============================================
+ASSET_TIERS = {
+    # TIER 1: LARGE CAP — Low volatility, need wider SL, slower
+    "LARGE_CAP": {
+        "tp_pct": 1.8, "sl_pct": 1.0, "cooldown": 180,
+        "rsi_buy_1m": 35, "rsi_buy_5m": 40, "rsi_buy_15m": 43,
+        "rsi_sell_1m": 65, "rsi_sell_5m": 60, "rsi_sell_15m": 57,
+        "vol_spike": 1.3,
+        "assets": {
+            "BTC_USDT":  "Bitcoin (BTC)",
+            "ETH_USDT":  "Ethereum (ETH)",
+            "BNB_USDT":  "BNB (BNB)",
+        }
+    },
+    # TIER 2: MID CAP — Moderate volatility, balanced
+    "MID_CAP": {
+        "tp_pct": 1.5, "sl_pct": 0.8, "cooldown": 120,
+        "rsi_buy_1m": 38, "rsi_buy_5m": 42, "rsi_buy_15m": 45,
+        "rsi_sell_1m": 62, "rsi_sell_5m": 58, "rsi_sell_15m": 55,
+        "vol_spike": 1.2,
+        "assets": {
+            "SOL_USDT":  "Solana (SOL)",
+            "XRP_USDT":  "Ripple (XRP)",
+            "ADA_USDT":  "Cardano (ADA)",
+            "LINK_USDT": "Chainlink (LINK)",
+            "AVAX_USDT": "Avalanche (AVAX)",
+            "DOT_USDT":  "Polkadot (DOT)",
+            "NEAR_USDT": "NEAR Protocol (NEAR)",
+            "APT_USDT":  "Aptos (APT)",
+            "SUI_USDT":  "Sui (SUI)",
+            "ARB_USDT":  "Arbitrum (ARB)",
+            "OP_USDT":   "Optimism (OP)",
+            "INJ_USDT":  "Injective (INJ)",
+            "TIA_USDT":  "Celestia (TIA)",
+            "FET_USDT":  "Fetch.ai (FET)",
+            "RNDR_USDT": "Render (RNDR)",
+            "ATOM_USDT": "Cosmos (ATOM)",
+            "FIL_USDT":  "Filecoin (FIL)",
+            "LTC_USDT":  "Litecoin (LTC)",
+        }
+    },
+    # TIER 3: SMALL/MEME CAP — High volatility, fast moves, tighter TP
+    "MEME_CAP": {
+        "tp_pct": 1.2, "sl_pct": 0.6, "cooldown": 60,
+        "rsi_buy_1m": 40, "rsi_buy_5m": 44, "rsi_buy_15m": 48,
+        "rsi_sell_1m": 60, "rsi_sell_5m": 56, "rsi_sell_15m": 52,
+        "vol_spike": 1.0,
+        "assets": {
+            "DOGE_USDT": "Dogecoin (DOGE)",
+            "PEPE_USDT": "PEPE (PEPE)",
+            "SHIB_USDT": "Shiba Inu (SHIB)",
+            "FLOKI_USDT": "Floki (FLOKI)",
+            "WIF_USDT":  "dogwifhat (WIF)",
+            "BONK_USDT": "Bonk (BONK)",
+            "TURBO_USDT": "Turbo (TURBO)",
+            "1000SATS_USDT": "1000SATS",
+        }
+    },
+    # TIER 4: COMMODITY/INDEX — Very different behavior
+    "COMMODITY": {
+        "tp_pct": 2.0, "sl_pct": 1.2, "cooldown": 240,
+        "rsi_buy_1m": 33, "rsi_buy_5m": 38, "rsi_buy_15m": 42,
+        "rsi_sell_1m": 67, "rsi_sell_5m": 62, "rsi_sell_15m": 58,
+        "vol_spike": 1.5,
+        "assets": {
+            "XAU_USDT":  "Gold (XAU)",
+        }
+    },
 }
+
+# Build flat lookups from tiers
+ASSET_NAMES_EN = {}
+ASSET_TIER_MAP = {}  # symbol -> tier_name
+for tier_name, tier_cfg in ASSET_TIERS.items():
+    for sym, name in tier_cfg["assets"].items():
+        ASSET_NAMES_EN[sym] = name
+        ASSET_TIER_MAP[sym] = tier_name
+
 ASSETS = list(ASSET_NAMES_EN.keys())
+
+def get_asset_config(symbol):
+    """Get tier-specific TP/SL/RSI config for an asset."""
+    tier_name = ASSET_TIER_MAP.get(symbol, "MID_CAP")
+    return ASSET_TIERS[tier_name]
 
 # ============================================
 # BANGLADESH TIME (BST GMT+6) HELPER & LOGGING
@@ -462,7 +515,8 @@ def fetch_order_book_depth(symbol):
         pass
     return {"imbalance_ratio": 1.0, "whale_bid": False, "whale_ask": False}
 
-def place_order(symbol, side, size):
+def place_order(symbol, side, size, tp_price=None, sl_price=None):
+    """Place market order with optional exchange-level TP/SL triggers."""
     body = {
         "contract": symbol,
         "size": int(size) if side == "BUY" else -int(size),
@@ -470,10 +524,82 @@ def place_order(symbol, side, size):
         "price": "0",
         "tif": "ioc"
     }
+    # Attach exchange-level TP/SL triggers (Gate.io v4.106.86+)
+    if tp_price and tp_price > 0:
+        body["tpsl_tp_trigger_price"] = str(round(tp_price, 4))
+    if sl_price and sl_price > 0:
+        body["tpsl_sl_trigger_price"] = str(round(sl_price, 4))
+    
+    t0 = time.time()
     res = gate_api_request("POST", "/futures/usdt/orders", body=body)
+    lat = int((time.time() - t0) * 1000)
+    
     if res and "id" in res:
+        log_api_event("/futures/usdt/orders", "POST", 200, lat,
+                      f"Order OK: {symbol} {side} x{size} TP={tp_price} SL={sl_price}")
+        logger.info(f"[ORDER] {symbol} {side} x{size} | TP=${tp_price} SL=${sl_price} | Exchange-level SL/TP attached")
         return res
+    
+    # If inline TP/SL failed, try placing order without TP/SL then add separate price orders
+    if tp_price or sl_price:
+        logger.warning(f"[ORDER] Inline TP/SL may not be supported, trying separate price orders...")
+        body_simple = {
+            "contract": symbol,
+            "size": int(size) if side == "BUY" else -int(size),
+            "iceberg": 0, "price": "0", "tif": "ioc"
+        }
+        res = gate_api_request("POST", "/futures/usdt/orders", body=body_simple)
+        if res and "id" in res:
+            # Place separate exchange-level TP/SL price trigger orders
+            if tp_price:
+                place_price_trigger_order(symbol, side, size, tp_price, "take_profit")
+            if sl_price:
+                place_price_trigger_order(symbol, side, size, sl_price, "stop_loss")
+            return res
+    
+    log_api_event("/futures/usdt/orders", "POST", 0, lat, f"Order FAILED: {symbol} {side}")
     return None
+
+def place_price_trigger_order(symbol, side, size, trigger_price, order_type="stop_loss"):
+    """Place exchange-level price trigger order (SL/TP) on Gate.io.
+    These orders live on the exchange and execute even if bot is offline."""
+    # For closing: reverse the side
+    close_side = "SELL" if side == "BUY" else "BUY"
+    close_size = int(size) if close_side == "BUY" else -int(size)
+    
+    # Determine trigger rule based on order type and side
+    if order_type == "take_profit":
+        # TP triggers when price rises (for BUY) or falls (for SELL)
+        rule = 1 if side == "BUY" else 2  # 1=price>=trigger, 2=price<=trigger
+    else:
+        # SL triggers when price falls (for BUY) or rises (for SELL)  
+        rule = 2 if side == "BUY" else 1  # 2=price<=trigger, 1=price>=trigger
+    
+    body = {
+        "initial": {
+            "contract": symbol,
+            "size": close_size,
+            "price": "0",  # Market price on trigger
+            "tif": "ioc",
+            "is_close": True
+        },
+        "trigger": {
+            "strategy_type": 0,  # 0=by price
+            "price_type": 0,     # 0=latest deal price
+            "price": str(round(trigger_price, 4)),
+            "rule": rule
+        },
+        "order_type": "close-long-order" if side == "BUY" else "close-short-order"
+    }
+    
+    res = gate_api_request("POST", "/futures/usdt/price_orders", body=body)
+    if res and "id" in res:
+        logger.info(f"[EXCHANGE {order_type.upper()}] {symbol}: Trigger @ ${trigger_price:.4f} placed on Gate.io ✅")
+        return res
+    else:
+        logger.warning(f"[EXCHANGE {order_type.upper()}] {symbol}: Failed to place on Gate.io — bot will monitor locally")
+        return None
+
 
 # ============================================
 # TECHNICAL INDICATORS & FINBERT NEWS
@@ -518,13 +644,18 @@ class NewsManager:
 
 news_manager = NewsManager()
 
-def set_tpsl(symbol, price, side):
+def set_tpsl(symbol, price, side, tier_cfg=None):
+    """Calculate TP/SL using tier-specific percentages."""
+    tp_pct = tier_cfg["tp_pct"] if tier_cfg else USER_TAKE_PROFIT_PCT
+    sl_pct = tier_cfg["sl_pct"] if tier_cfg else USER_STOP_LOSS_PCT
+    
+    # Special handling for Gold (fixed dollar offsets)
     if symbol == "XAU_USDT":
-        tp = price + 8.0 if side == "BUY" else price - 8.0
-        sl = price - 3.0 if side == "BUY" else price + 3.0
+        tp = (price + 8.0) if side == "BUY" else (price - 8.0)
+        sl = (price - 3.0) if side == "BUY" else (price + 3.0)
     else:
-        tp = price * (1.0 + USER_TAKE_PROFIT_PCT / 100.0) if side == "BUY" else price * (1.0 - USER_TAKE_PROFIT_PCT / 100.0)
-        sl = price * (1.0 - USER_STOP_LOSS_PCT / 100.0) if side == "BUY" else price * (1.0 + USER_STOP_LOSS_PCT / 100.0)
+        tp = price * (1.0 + tp_pct / 100.0) if side == "BUY" else price * (1.0 - tp_pct / 100.0)
+        sl = price * (1.0 - sl_pct / 100.0) if side == "BUY" else price * (1.0 + sl_pct / 100.0)
     return round(tp, 4), round(sl, 4)
 
 # ============================================
@@ -792,12 +923,12 @@ class TradingBotEngine:
         self.unrealised_pnl     = 0.0  # Gate.io unrealised PnL (display only, not for staircase logic)
 
         self.cached_account_raw = {
-            "cross_margin_balance": "1000.00",
-            "total": "1000.00",
-            "cross_unrealised_pnl": "+0.0000",
+            "cross_margin_balance": "0.00",
+            "total": "0.00",
+            "cross_unrealised_pnl": "0.0000",
             "maintenance_margin": "0.0000",
             "user": 59787607,
-            "data_source": "INITIALIZING"
+            "data_source": "WAITING_FOR_API"
         }
         self.cached_open_trades = []
         self.cached_last_trades = []
@@ -805,38 +936,14 @@ class TradingBotEngine:
         self._seed_market_snapshots()
 
     def _seed_market_snapshots(self):
-        defaults = {
-            "ETH_USDT": {"price": 2511.15, "rsi_1m": 44.9, "macd_1m": 2.02, "signal_1m": 0.74, "vol_ratio": 1.25, "ema200_15m": 2433, "ema200_1h": 2433, "sentiment": "POSITIVE"},
-            "BTC_USDT": {"price": 79020.00, "rsi_1m": 33.3, "macd_1m": 28.65, "signal_1m": 22.79, "vol_ratio": 1.20, "ema200_15m": 77000, "ema200_1h": 77000, "sentiment": "POSITIVE"},
-            "XAU_USDT": {"price": 4484.05, "rsi_1m": 42.0, "macd_1m": -0.01, "signal_1m": 0.04, "vol_ratio": 1.15, "ema200_15m": 4460, "ema200_1h": 4460, "sentiment": "POSITIVE"},
-            "WTI_USDT": {"price": 73.98, "rsi_1m": 52.5, "macd_1m": -0.15, "signal_1m": -0.22, "vol_ratio": 1.10, "ema200_15m": 72, "ema200_1h": 72, "sentiment": "NEUTRAL"},
-            "US100_USDT": {"price": 19425.58, "rsi_1m": 63.3, "macd_1m": 8.01, "signal_1m": 0.31, "vol_ratio": 1.30, "ema200_15m": 19000, "ema200_1h": 19000, "sentiment": "NEUTRAL"},
-            "AAPL_USDT": {"price": 233.03, "rsi_1m": 65.0, "macd_1m": 0.62, "signal_1m": 0.57, "vol_ratio": 1.22, "ema200_15m": 220, "ema200_1h": 220, "sentiment": "POSITIVE"},
-            "NVDA_USDT": {"price": 133.58, "rsi_1m": 72.8, "macd_1m": 0.19, "signal_1m": 0.16, "vol_ratio": 1.20, "ema200_15m": 125, "ema200_1h": 125, "sentiment": "POSITIVE"},
-            "SOL_USDT": {"price": 180, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 180, "ema200_1h": 180, "sentiment": "NEUTRAL"},
-            "XRP_USDT": {"price": 2.5, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 2.5, "ema200_1h": 2.5, "sentiment": "NEUTRAL"},
-            "BNB_USDT": {"price": 600, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 600, "ema200_1h": 600, "sentiment": "NEUTRAL"},
-            "DOGE_USDT": {"price": 0.35, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 0.35, "ema200_1h": 0.35, "sentiment": "NEUTRAL"},
-            "ADA_USDT": {"price": 0.75, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 0.75, "ema200_1h": 0.75, "sentiment": "NEUTRAL"},
-            "LINK_USDT": {"price": 18, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 18, "ema200_1h": 18, "sentiment": "NEUTRAL"},
-            "AVAX_USDT": {"price": 35, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 35, "ema200_1h": 35, "sentiment": "NEUTRAL"},
-            "DOT_USDT": {"price": 7.5, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 7.5, "ema200_1h": 7.5, "sentiment": "NEUTRAL"},
-            "NEAR_USDT": {"price": 7.0, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 7.0, "ema200_1h": 7.0, "sentiment": "NEUTRAL"},
-            "APT_USDT": {"price": 12.0, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 12.0, "ema200_1h": 12.0, "sentiment": "NEUTRAL"},
-            "TSLA_USDT": {"price": 280, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 280, "ema200_1h": 280, "sentiment": "NEUTRAL"},
-            "AMZN_USDT": {"price": 195, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 195, "ema200_1h": 195, "sentiment": "NEUTRAL"},
-            "MSFT_USDT": {"price": 430, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 430, "ema200_1h": 430, "sentiment": "NEUTRAL"},
-            "GOOG_USDT": {"price": 175, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 175, "ema200_1h": 175, "sentiment": "NEUTRAL"},
-            "META_USDT": {"price": 530, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 530, "ema200_1h": 530, "sentiment": "NEUTRAL"},
-            "AMD_USDT": {"price": 165, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 165, "ema200_1h": 165, "sentiment": "NEUTRAL"},
-            "AVGO_USDT": {"price": 180, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 180, "ema200_1h": 180, "sentiment": "NEUTRAL"},
-            "NFLX_USDT": {"price": 750, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 750, "ema200_1h": 750, "sentiment": "NEUTRAL"},
-            "XAG_USDT": {"price": 32, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 32, "ema200_1h": 32, "sentiment": "NEUTRAL"},
-            "SP500_USDT": {"price": 5600, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 5600, "ema200_1h": 5600, "sentiment": "NEUTRAL"},
-            "IBIT_USDT": {"price": 55, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 55, "ema200_1h": 55, "sentiment": "NEUTRAL"},
-            "SLV_USDT": {"price": 28, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 28, "ema200_1h": 28, "sentiment": "NEUTRAL"},
-            "US30_USDT": {"price": 42000, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 42000, "ema200_1h": 42000, "sentiment": "NEUTRAL"},
-        }
+        defaults = {}
+        for sym in ASSETS:
+            defaults[sym] = {"price": 100, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 100, "ema200_1h": 100, "sentiment": "NEUTRAL"}
+        
+        # Real-ish overrides for a few so UI looks nice
+        if "ETH_USDT" in defaults: defaults["ETH_USDT"] = {"price": 2511.15, "rsi_1m": 44.9, "macd_1m": 2.02, "signal_1m": 0.74, "vol_ratio": 1.25, "ema200_15m": 2433, "ema200_1h": 2433, "sentiment": "POSITIVE"}
+        if "BTC_USDT" in defaults: defaults["BTC_USDT"] = {"price": 79020.00, "rsi_1m": 33.3, "macd_1m": 28.65, "signal_1m": 22.79, "vol_ratio": 1.20, "ema200_15m": 77000, "ema200_1h": 77000, "sentiment": "POSITIVE"}
+        if "XAU_USDT" in defaults: defaults["XAU_USDT"] = {"price": 4484.05, "rsi_1m": 42.0, "macd_1m": -0.01, "signal_1m": 0.04, "vol_ratio": 1.15, "ema200_15m": 4460, "ema200_1h": 4460, "sentiment": "POSITIVE"}
         for sym, d in defaults.items():
             self.market_snapshots[sym] = {
                 "price": d["price"], "rsi_1m": d["rsi_1m"],
@@ -861,6 +968,7 @@ class TradingBotEngine:
             self.safe_mode_active = False
             self.trade_usd_size = USER_TRADE_SIZE
             self.bot_active = True
+            self.badge_threshold = USER_BADGE_THRESHOLD
             self.win_stats = {sym: {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0} for sym in ASSETS}
             self.processed_trade_ids = set()
             send_telegram_alert(f" <b>DAILY TRADING SESSION RESET (12:00 AM BST)</b>\nNew 24h cycle active.\nTarget: ${USER_DAILY_TARGET:.2f} | Loss Limit: ${USER_DAILY_LOSS_LIMIT:.2f}")
@@ -949,12 +1057,12 @@ class TradingBotEngine:
             else:
                 self.is_live_data = False
                 self.cached_account_raw = {
-                    "cross_margin_balance": "1000.00",
-                    "total": "1000.00",
-                    "cross_unrealised_pnl": "+0.0000",
+                    "cross_margin_balance": "0.00",
+                    "total": "0.00",
+                    "cross_unrealised_pnl": "0.0000",
                     "maintenance_margin": "0.0000",
                     "user": 59787607,
-                    "data_source": "SIMULATED_FALLBACK"
+                    "data_source": "API_UNAVAILABLE"
                 }
         except Exception as e:
             logger.error(f"[CACHE] Balance error: {e}")
@@ -992,6 +1100,23 @@ class TradingBotEngine:
                         "gateio_link": link_base.format(sym=sym)
                     })
             self.cached_open_trades = open_trades_new
+            
+            # Sync Gate.io positions into open_trades for SL/TP monitoring (on startup)
+            if not self.open_trades and self.cached_open_trades:
+                for pos in self.cached_open_trades:
+                    sym = pos.get('symbol')
+                    if sym and pos.get('status') == 'OPEN' and sym not in self.open_trades:
+                        self.open_trades[sym] = {
+                            'symbol': sym,
+                            'side': pos.get('side', 'BUY'),
+                            'entry_price': float(pos.get('entry_price', 0)),
+                            'size': int(pos.get('size', 1)),
+                            'tp': float(pos.get('tp', 0)),
+                            'sl': float(pos.get('sl', 0)),
+                            'created_at': pos.get('created_at', ''),
+                            'peak_pnl': 0.0
+                        }
+                        logger.info(f"[SYNC] Recovered position: {sym} {pos.get('side')} @ ${pos.get('entry_price')}")
         except Exception as e:
             logger.error(f"[CACHE] Positions error: {e}")
             self.cached_open_trades = []
@@ -1079,8 +1204,10 @@ class TradingBotEngine:
             bd_hour = get_bd_time().hour
             if bd_hour < 10 or bd_hour >= 22:  # Only trade 10AM-10PM BST
                 return
+        tier_cfg = get_asset_config(symbol)
+        tier_cooldown = tier_cfg["cooldown"]
         if symbol in self.cooldowns:
-            if time.time() - self.cooldowns[symbol] < USER_COOLDOWN_SECS:
+            if time.time() - self.cooldowns[symbol] < tier_cooldown:
                 return
         df_1m  = fetch_live_public_klines(symbol, interval="1m", limit=100)
         df_5m  = fetch_live_public_klines(symbol, interval="5m", limit=100)
@@ -1113,35 +1240,49 @@ class TradingBotEngine:
             rsi_15m = 50.0
             logger.warning(f"[INDICATOR] {symbol}: Insufficient 15m candles for RSI ({len(df_15m) if df_15m is not None else 0})")
 
-        mtf_rsi_buy  = (float(rsi_1m) < 38) and (rsi_5m < 42) and (rsi_15m < 45)
-        mtf_rsi_sell = (float(rsi_1m) > 62) and (rsi_5m > 58) and (rsi_15m > 55)
-        sentiment    = "POSITIVE" if macd_val > sig_val else "NEUTRAL"
+        # MANDATORY: Multi-Timeframe RSI must align (not optional badge anymore)
+        mtf_rsi_buy  = (float(rsi_1m) < tier_cfg["rsi_buy_1m"]) and (rsi_5m < tier_cfg["rsi_buy_5m"]) and (rsi_15m < tier_cfg["rsi_buy_15m"])
+        mtf_rsi_sell = (float(rsi_1m) > tier_cfg["rsi_sell_1m"]) and (rsi_5m > tier_cfg["rsi_sell_5m"]) and (rsi_15m > tier_cfg["rsi_sell_15m"])
+        
+        # VOLUME SPIKE DETECTION: 3x volume = instant high-confidence signal
+        vol_spike_threshold = tier_cfg["vol_spike"]
+        is_volume_spike = vol_ratio >= 3.0  # 3x average = massive spike
+        is_volume_ok = vol_ratio >= vol_spike_threshold
+        
+        sentiment = "POSITIVE" if macd_val > sig_val else "NEUTRAL"
 
-        buy_badges = sum([
-            bool(mtf_rsi_buy),
-            macd_val > sig_val,
-            vol_ratio >= 1.2,
-            curr_price > ema200_15m,
-            curr_price > ema200_1h,
-            sentiment in ["POSITIVE", "NEUTRAL"],
-            ob_depth["imbalance_ratio"] >= 1.1,
-            bool(ob_depth["whale_bid"]),
-            curr_price > df_1m['open'].iloc[-1],  # Price above session open
-            abs(curr_price - support_level) / max(curr_price, 1) <= 0.02
+        # Badge scoring (RSI is now SEPARATE and MANDATORY)
+        buy_confirmations = sum([
+            macd_val > sig_val,                                    # MACD crossover
+            is_volume_ok,                                          # Volume above threshold
+            curr_price > ema200_15m,                               # Price above 15m EMA200
+            curr_price > ema200_1h,                                # Price above 1h EMA200
+            ob_depth["imbalance_ratio"] >= 1.1,                    # Order book buy pressure
+            bool(ob_depth["whale_bid"]),                            # Whale buying
+            curr_price > df_1m['open'].iloc[-1],                   # Bullish candle
+            abs(curr_price - support_level) / max(curr_price, 1) <= 0.02  # Near support
         ])
 
-        sell_badges = sum([
-            bool(mtf_rsi_sell),
+        sell_confirmations = sum([
             macd_val < sig_val,
-            vol_ratio >= 1.2,
+            is_volume_ok,
             curr_price < ema200_15m,
             curr_price < ema200_1h,
-            sentiment in ["NEGATIVE", "NEUTRAL"],
             ob_depth["imbalance_ratio"] <= 0.9,
             bool(ob_depth["whale_ask"]),
-            curr_price < df_1m['open'].iloc[-1],  # Price below session open
+            curr_price < df_1m['open'].iloc[-1],
             abs(curr_price - resistance_level) / max(curr_price, 1) <= 0.02
         ])
+        
+        # VOLUME SPIKE BONUS: If 3x volume spike, reduce required confirmations by 2
+        required_badges = self.badge_threshold
+        if is_volume_spike:
+            required_badges = max(2, required_badges - 2)
+            logger.info(f"[VOL SPIKE] {symbol}: {vol_ratio:.1f}x volume! Badge req reduced to {required_badges}")
+
+        # For market_snapshots, use max of buy/sell badges + RSI status
+        total_buy = buy_confirmations + (1 if mtf_rsi_buy else 0)
+        total_sell = sell_confirmations + (1 if mtf_rsi_sell else 0)
 
         self.market_snapshots[symbol] = {
             "price": curr_price, "rsi_1m": round(rsi_1m, 1),
@@ -1149,8 +1290,8 @@ class TradingBotEngine:
             "macd_1m": round(macd_val, 2), "signal_1m": round(sig_val, 2),
             "vol_ratio": round(vol_ratio, 2), "ema200_15m": round(ema200_15m, 2),
             "ema200_1h": round(ema200_1h, 2), "atr": round(atr_val, 4),
-            "sentiment": sentiment, "matched_badges": max(buy_badges, sell_badges),
-            "buy_badges": buy_badges, "sell_badges": sell_badges,
+            "sentiment": sentiment, "matched_badges": max(total_buy, total_sell),
+            "buy_badges": total_buy, "sell_badges": total_sell,
             "ob_ratio": ob_depth["imbalance_ratio"],
             "updated_at": get_bd_time_str()
         }
@@ -1162,19 +1303,21 @@ class TradingBotEngine:
         if not self.bot_active or len(self.open_trades) >= self.max_open_trades:
             return
 
-        if buy_badges >= self.badge_threshold:
-            self.execute_trade(symbol, "BUY", curr_price, buy_badges)
-        elif sell_badges >= self.badge_threshold:
-            self.execute_trade(symbol, "SELL", curr_price, sell_badges)
+        # RSI MUST match + enough confirmation badges
+        if mtf_rsi_buy and buy_confirmations >= required_badges:
+            self.execute_trade(symbol, "BUY", curr_price, total_buy)
+        elif mtf_rsi_sell and sell_confirmations >= required_badges:
+            self.execute_trade(symbol, "SELL", curr_price, total_sell)
 
     def execute_trade(self, symbol, side, price, badge_count=4):
+        tier_cfg = get_asset_config(symbol)
         compound_size = get_compound_trade_size(self.total_balance)
         smart_size = max(compound_size, self.trade_usd_size)  # Use higher of compound or staircase
         self.trade_usd_size = smart_size  # Update for display
         self.daily_trade_count += 1
-        tp, sl = set_tpsl(symbol, price, side)
+        tp, sl = set_tpsl(symbol, price, side, tier_cfg=tier_cfg)
         contracts = max(1, int(smart_size))  # Gate.io USDT-M: 1 contract ≈ $1 notional
-        order_result = place_order(symbol, side, contracts)
+        order_result = place_order(symbol, side, contracts, tp_price=tp, sl_price=sl)
         if order_result is None:
             logger.warning(f"[ORDER REJECTED] {symbol} {side} — Gate.io did not accept order")
             return
@@ -1192,26 +1335,34 @@ class TradingBotEngine:
         self.cooldowns[symbol] = time.time()
         send_telegram_alert(f"⚡ <b>TRADE EXECUTED ({side})</b>\n<b>Asset:</b> {ASSET_NAMES_EN.get(symbol, symbol)}\n<b>Entry:</b> ${price:,.2f} | <b>Size:</b> ${smart_size:,.2f}\n<b>TP:</b> ${tp:,.2f} | <b>SL:</b> ${sl:,.2f}")
 
-    def step_trailing_stop(self, trade, curr_price, pnl_usd):
-        """Locks profit at every $0.50 increment:
-        $0.50 PnL -> SL locks at $0.25 profit
-        $1.00 PnL -> SL locks at $0.75 profit
-        $1.50 PnL -> SL locks at $1.25 profit
-        $2.00 PnL -> SL locks at $1.75 profit
-        """
-        if pnl_usd >= PROFIT_LOCK_STEP:
-            steps = int(pnl_usd / PROFIT_LOCK_STEP)
-            target_locked_usd = (steps * PROFIT_LOCK_STEP) - PROFIT_LOCK_OFFSET
-            if target_locked_usd > trade.get("locked_profit_usd", 0.0):
-                trade["locked_profit_usd"] = target_locked_usd
-                entry_p = float(trade["entry_price"])
-                side = trade["side"]
-                trade_usd = float(trade.get("trade_usd", 4.0))
-                price_diff = (target_locked_usd / max(trade_usd, 1.0)) * entry_p
-                new_sl = round(entry_p + price_diff if side == "BUY" else entry_p - price_diff, 4)
-                if (side == "BUY" and new_sl > trade["sl"]) or (side == "SELL" and new_sl < trade["sl"]):
-                    trade["sl"] = new_sl
-                    logger.info(f"[STEP SL LOCK] {trade['symbol']}: Locked +${target_locked_usd:.2f} profit. New SL: ${new_sl:.2f}")
+    def step_trailing_stop(self, symbol):
+        if symbol not in self.open_trades:
+            return
+        trade = self.open_trades[symbol]
+        entry = trade['entry_price']
+        size = trade.get('size', 1)
+        side = trade['side']
+        curr_price = self.market_snapshots.get(symbol, {}).get('price', entry)
+        
+        if side == 'BUY':
+            pnl_pct = ((curr_price - entry) / entry) * 100 if entry > 0 else 0
+        else:
+            pnl_pct = ((entry - curr_price) / entry) * 100 if entry > 0 else 0
+        
+        # Lock profit at every 0.3% gain, floor rises by 0.15%
+        lock_step_pct = 0.3
+        floor_step_pct = 0.15
+        if pnl_pct >= lock_step_pct:
+            steps = int(pnl_pct / lock_step_pct)
+            new_floor_pct = steps * floor_step_pct
+            old_floor_pct = trade.get('floor_pct', 0.0)
+            if new_floor_pct > old_floor_pct:
+                trade['floor_pct'] = new_floor_pct
+                if side == 'BUY':
+                    trade['sl'] = entry * (1.0 + new_floor_pct / 100.0)
+                else:
+                    trade['sl'] = entry * (1.0 - new_floor_pct / 100.0)
+                logger.info(f"[TRAIL LOCK] {symbol}: PnL {pnl_pct:.2f}% → Floor locked at {new_floor_pct:.2f}%")
 
     def monitor_open_position(self, symbol, curr_price):
         trade = self.open_trades.get(symbol)
@@ -1221,8 +1372,8 @@ class TradingBotEngine:
         pnl_pct = ((curr_p - entry_p)/entry_p)*100 if side == "BUY" else ((entry_p - curr_p)/entry_p)*100
         pnl_usd = round((pnl_pct / 100) * float(trade.get("trade_usd", 4.0)), 4)
 
-        # 1. Step-by-step $0.50 profit lock
-        self.step_trailing_stop(trade, curr_p, pnl_usd)
+        # 1. Step-by-step 0.3% profit lock
+        self.step_trailing_stop(symbol)
 
         # 2. 50% partial take profit
         if pnl_pct >= PARTIAL_TRIGGER and not trade.get("partial_done"):
@@ -1244,7 +1395,11 @@ class TradingBotEngine:
         if hit_tp or hit_sl:
             self.daily_pnl += pnl_usd
             reason = "TAKE_PROFIT_HIT" if hit_tp else ("PROFIT_LOCK_HIT" if pnl_usd > 0 else "STOP_LOSS_HIT")
-            place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])
+            close_result = place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])
+            if close_result is None:
+                logger.warning(f"[SL/TP CLOSE FAILED] {symbol} — retrying next cycle")
+                return  # Don't delete, retry next cycle
+            
             execute_db_query("""
                 UPDATE bot_trades SET exit_price = %s, pnl = %s, status = 'CLOSED', exit_reason = %s
                 WHERE id = (SELECT id FROM bot_trades WHERE symbol = %s AND status = 'OPEN' ORDER BY id DESC LIMIT 1);
@@ -1799,7 +1954,7 @@ def cache_refresh_loop():
             bot_engine.refresh_live_cache()
             execute_db_query("UPDATE bot_state SET total_balance = %s, daily_pnl = %s, trade_usd_size = %s, updated_at = (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours') WHERE id = 1;", (bot_engine.total_balance, bot_engine.daily_pnl, bot_engine.trade_usd_size))
         except Exception: pass
-        time.sleep(0.5)
+        time.sleep(0.3)
 
 def main():
     logger.info("=" * 65)
@@ -1820,7 +1975,7 @@ def main():
     threading.Thread(target=bot_engine.run_heartbeat, daemon=True).start()
     threading.Thread(target=keep_render_alive, daemon=True).start()
 
-    logger.info(f"[MAIN LOOP] 500ms rotating scan for {len(ASSETS)} assets.")
+    logger.info(f"[MAIN LOOP] 300ms rotating scan for {len(ASSETS)} assets.")
     scan_batch_idx = 0
     batch_size = 10
     while True:
@@ -1834,7 +1989,7 @@ def main():
                     scan_batch_idx = 0
         except Exception as e:
             logger.error(f"[MAIN LOOP ERROR] {e}")
-        time.sleep(0.5)
+        time.sleep(0.3)
 
 if __name__ == "__main__":
     main()

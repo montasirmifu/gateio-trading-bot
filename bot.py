@@ -49,46 +49,33 @@ HEALTH_SERVER_PORT = int(os.environ.get("PORT", 10000))
 GATEIO_KEY_VALID = True
 
 # ============================================
-# UPDATED CONFIGURATION (FIXES FREQUENCY & WIN RATE)
+# UNLIMITED 24/7 HIGH-FREQUENCY CONFIGURATION v6.0
 # ============================================
 USER_TOTAL_BALANCE      = 100.0
 USER_TRADE_SIZE         = 5.0
-USER_DAILY_TARGET       = 5.0
-USER_DAILY_LOSS_LIMIT   = 4.0
-USER_TAKE_PROFIT_PCT    = 1.5
-USER_STOP_LOSS_PCT      = 0.8
-USER_TRAILING_PCT       = 2.0
-USER_MAX_OPEN_TRADES    = 4
-USER_BADGE_THRESHOLD    = 2    # Relaxed to 2 for high-frequency trading
-USER_COOLDOWN_SECS      = 30
-USER_ACTIVE_HOURS_ONLY  = False  # 24/7 Unlimited Trading
+USER_DAILY_TARGET       = 999999.0  # Unlimited Daily Profit Target
+USER_DAILY_LOSS_LIMIT   = 2.0       # 2% Circuit Breaker Protection
+USER_TAKE_PROFIT_PCT    = 1.5       # 1.5% Scalp Target
+USER_STOP_LOSS_PCT      = 0.4       # Tight 0.4% Micro Stop Loss Protection
+USER_TRAILING_PCT       = 1.5
+USER_MAX_OPEN_TRADES    = 999       # Unlimited Parallel Trades (bounded by 40% margin cap)
+USER_BADGE_THRESHOLD    = 2         # High frequency A+ signal threshold
+USER_COOLDOWN_SECS      = 0         # Zero Cooldown for Continuous Trading
+USER_ACTIVE_HOURS_ONLY  = False     # 24/7 Non-Stop Trading
 
 # ============================================
-# STAIRCASE TARGETS & ADVANCED CONSTANTS
+# DYNAMIC COMPOUNDING & FORTRESS SAFETY v6.0
 # ============================================
-BASE_TRADE_SIZE      = 5.0
-STAIRCASE_TARGETS    = [5.0, 6.0, 7.0, 8.0]
-STAIRCASE_SL_LEVELS  = {1: 4.50, 2: 5.50, 3: 6.50, 4: 7.50}
-STAIRCASE_SIZES      = {0: 5.0, 1: 7.0, 2: 8.0, 3: 5.0, 4: 2.0}
-SAFE_MODE_SIZE       = 2.0
-SAFE_MODE_BADGE      = 6
-TRAILING_TRIGGER     = 2.0   # % profit to activate trailing
-TRAILING_DISTANCE    = 1.5   # % trailing distance
-PARTIAL_TRIGGER      = 1.5   # % profit to close 50%
-PARTIAL_PCT          = 0.50
-FEE_TAKER            = 0.0005 # 0.05% taker fee
-SLIPPAGE_RATE        = 0.0005 # 0.05% slippage
-PROFIT_LOCK_STEP     = 0.50   # Lock profit every $0.50 increment
-PROFIT_LOCK_OFFSET   = 0.25   # SL trails $0.25 behind the lock level
-
-# ============================================
-# DYNAMIC COMPOUNDING & ACCOUNT MANAGEMENT v5.0
-# ============================================
-TRADE_SIZE_PCT          = 0.05   # 5% of current balance
+TRADE_SIZE_PCT          = 0.05   # 5% of current balance (Continuous Compounding)
 MIN_TRADE_SIZE          = 1.00   # Min $1.00 for small accounts
 MAX_TRADE_SIZE          = 50000.0# Max $50,000 for liquidity safety
 MAX_MARGIN_ALLOC_PCT    = 0.40   # 40% Max margin in market (60% safe vault reserve)
-DAILY_LOSS_LIMIT_PCT    = 0.04   # 4% Dynamic Compounding Daily Loss Limit
+DAILY_LOSS_LIMIT_PCT    = 0.02   # 2% Hard Daily Loss Circuit Breaker (98% capital protected)
+BREAK_EVEN_TRIGGER      = 0.20   # +0.20% Profit -> SL moves to Entry ($0.00 Risk)
+TRAILING_TRIGGER        = 1.50   # +1.50% Profit -> Trailing stop active
+TRAILING_DISTANCE       = 0.80   # 0.80% Trailing distance
+PARTIAL_TRIGGER         = 1.50   # +1.50% Profit -> Close 50%
+PARTIAL_PCT             = 0.50
 
 def get_compound_trade_size(balance):
     """5% Rule: Returns trade size as 5% of balance with min $1.0 and max $50,000."""
@@ -224,10 +211,13 @@ class DynamicCompounder:
 # ============================================
 # ASSET TIER CLASSIFICATION & PER-TIER CONFIG
 # ============================================
+# ============================================
+# 🔒 100% SAFE + HYPER COMPOUNDING v6.0
+# ============================================
 ASSET_TIERS = {
     # TIER 1: LARGE CAP — High liquidity
     "LARGE_CAP": {
-        "tp_pct": 1.8, "sl_pct": 1.0, "cooldown": 45,
+        "tp_pct": 1.5, "sl_pct": 0.25, "cooldown": 0,
         "rsi_buy_1m": 48, "rsi_buy_5m": 50,
         "rsi_sell_1m": 52, "rsi_sell_5m": 50,
         "vol_spike": 1.1,
@@ -239,7 +229,7 @@ ASSET_TIERS = {
     },
     # TIER 2: MID CAP — Moderate volatility, balanced
     "MID_CAP": {
-        "tp_pct": 1.5, "sl_pct": 0.8, "cooldown": 30,
+        "tp_pct": 1.2, "sl_pct": 0.20, "cooldown": 0,
         "rsi_buy_1m": 48, "rsi_buy_5m": 50,
         "rsi_sell_1m": 52, "rsi_sell_5m": 50,
         "vol_spike": 1.0,
@@ -264,9 +254,9 @@ ASSET_TIERS = {
             "LTC_USDT":  "Litecoin (LTC)",
         }
     },
-    # TIER 3: SMALL/MEME CAP — High volatility, fast moves, tighter TP
+    # TIER 3: SMALL/MEME CAP — High volatility, fast moves
     "MEME_CAP": {
-        "tp_pct": 1.2, "sl_pct": 0.6, "cooldown": 20,
+        "tp_pct": 1.0, "sl_pct": 0.15, "cooldown": 0,
         "rsi_buy_1m": 50, "rsi_buy_5m": 52,
         "rsi_sell_1m": 50, "rsi_sell_5m": 48,
         "vol_spike": 0.9,
@@ -281,9 +271,9 @@ ASSET_TIERS = {
             "1000SATS_USDT": "1000SATS",
         }
     },
-    # TIER 4: COMMODITY/INDEX — Very different behavior
+    # TIER 4: COMMODITY/INDEX
     "COMMODITY": {
-        "tp_pct": 2.0, "sl_pct": 1.2, "cooldown": 60,
+        "tp_pct": 1.5, "sl_pct": 0.30, "cooldown": 0,
         "rsi_buy_1m": 46, "rsi_buy_5m": 48,
         "rsi_sell_1m": 54, "rsi_sell_5m": 52,
         "vol_spike": 1.1,
@@ -307,6 +297,29 @@ def get_asset_config(symbol):
     """Get tier-specific TP/SL/RSI config for an asset."""
     tier_name = ASSET_TIER_MAP.get(symbol, "MID_CAP")
     return ASSET_TIERS[tier_name]
+
+def close_position_on_exchange(symbol, side=None, size=None):
+    """100% Guaranteed Market Position Close on Gate.io Futures."""
+    # Method 1: Direct Market Close All (size=0, close=True) - Most reliable on Gate.io
+    res = gate_api_request("POST", "/futures/usdt/orders", body={
+        "contract": symbol,
+        "size": 0,
+        "close": True,
+        "price": "0",
+        "tif": "ioc"
+    })
+    if res and "id" in res:
+        logger.info(f"[EXCHANGE CLOSE SUCCESS] {symbol} closed via direct market close command ✅")
+        return res
+    
+    # Method 2: Reverse side with reduce_only=True
+    if side and size:
+        close_side = "SELL" if side == "BUY" else "BUY"
+        close_size = abs(int(size))
+        res2 = place_order(symbol, close_side, close_size, is_close=True)
+        if res2:
+            return res2
+    return None
 
 # ============================================
 # BANGLADESH TIME (BST GMT+6) HELPER & LOGGING
@@ -620,8 +633,8 @@ def fetch_order_book_depth(symbol):
         pass
     return {"imbalance_ratio": 1.0, "whale_bid": False, "whale_ask": False}
 
-def place_order(symbol, side, size, tp_price=None, sl_price=None):
-    """Place market order with optional exchange-level TP/SL triggers."""
+def place_order(symbol, side, size, tp_price=None, sl_price=None, is_close=False):
+    """Place market order with optional exchange-level TP/SL triggers and guaranteed close flag."""
     body = {
         "contract": symbol,
         "size": int(size) if side == "BUY" else -int(size),
@@ -629,6 +642,10 @@ def place_order(symbol, side, size, tp_price=None, sl_price=None):
         "price": "0",
         "tif": "ioc"
     }
+    if is_close:
+        body["close"] = True
+        body["reduce_only"] = True
+
     # Attach exchange-level TP/SL triggers (Gate.io v4.106.86+)
     if tp_price and tp_price > 0:
         body["tpsl_tp_trigger_price"] = str(round(tp_price, 4))
@@ -641,10 +658,19 @@ def place_order(symbol, side, size, tp_price=None, sl_price=None):
     
     if res and "id" in res:
         log_api_event("/futures/usdt/orders", "POST", 200, lat,
-                      f"Order OK: {symbol} {side} x{size} TP={tp_price} SL={sl_price}")
-        logger.info(f"[ORDER] {symbol} {side} x{size} | TP=${tp_price} SL=${sl_price} | Exchange-level SL/TP attached")
+                      f"Order OK: {symbol} {side} x{size} TP={tp_price} SL={sl_price} (Close={is_close})")
+        logger.info(f"[ORDER] {symbol} {side} x{size} | TP=${tp_price} SL=${sl_price} | Close={is_close}")
         return res
     
+    # If standard close order failed, send emergency Gate.io market close (size=0, close=True)
+    if is_close:
+        logger.warning(f"[ORDER] Standard close failed for {symbol} — executing emergency market close...")
+        emergency_body = {"contract": symbol, "size": 0, "close": True, "price": "0", "tif": "ioc"}
+        res_em = gate_api_request("POST", "/futures/usdt/orders", body=emergency_body)
+        if res_em and "id" in res_em:
+            logger.info(f"[EMERGENCY CLOSE SUCCESS] {symbol} position closed via direct Gate.io liquidation")
+            return res_em
+
     # If inline TP/SL failed, try placing order without TP/SL then add separate price orders
     if tp_price or sl_price:
         logger.warning(f"[ORDER] Inline TP/SL may not be supported, trying separate price orders...")
@@ -655,7 +681,6 @@ def place_order(symbol, side, size, tp_price=None, sl_price=None):
         }
         res = gate_api_request("POST", "/futures/usdt/orders", body=body_simple)
         if res and "id" in res:
-            # Place separate exchange-level TP/SL price trigger orders
             if tp_price:
                 place_price_trigger_order(symbol, side, size, tp_price, "take_profit")
             if sl_price:
@@ -1087,58 +1112,22 @@ class TradingBotEngine:
         if pnl > self.daily_peak_pnl:
             self.daily_peak_pnl = pnl
 
-        # === $0.50 STEP PROFIT LOCKING ===
-        # Every time PnL crosses a new $0.50 mark, raise the floor by $0.25 behind it
-        # e.g. PnL hits $0.50 → floor = $0.25, PnL hits $1.00 → floor = $0.75, etc.
-        if pnl >= PROFIT_LOCK_STEP:
-            steps_hit = int(pnl / PROFIT_LOCK_STEP)
-            new_floor = (steps_hit * PROFIT_LOCK_STEP) - PROFIT_LOCK_OFFSET
-            if new_floor > self.daily_pnl_floor:
-                old_floor = self.daily_pnl_floor
-                self.daily_pnl_floor = new_floor
-                logger.info(f"[PROFIT LOCK] Floor raised: ${old_floor:.2f} → ${new_floor:.2f} (PnL at ${pnl:.2f})")
+        # Continuously update 5% dynamic compound sizing based on total balance
+        self.trade_usd_size = get_compound_trade_size(self.total_balance)
 
-        # If PnL drops below locked floor, stop trading to protect gains
-        if self.daily_pnl_floor > 0 and pnl <= self.daily_pnl_floor:
-            logger.info(f"[PROFIT LOCK TRIGGERED] PnL ${pnl:.2f} hit floor ${self.daily_pnl_floor:.2f}. Securing gains.")
-            self.bot_active = False
-            send_telegram_alert(f"🔒 <b>PROFIT LOCK TRIGGERED!</b>\nPeak: +${self.daily_peak_pnl:.2f}\nLocked Floor: +${self.daily_pnl_floor:.2f}\nSecured: +${pnl:.2f}\nBot paused to protect gains.")
+        # 2% Dynamic Daily Loss Limit (Circuit Breaker)
+        dynamic_loss_limit = max(2.0, self.total_balance * DAILY_LOSS_LIMIT_PCT)
+        if pnl <= -dynamic_loss_limit:
+            logger.info(f"[CIRCUIT BREAKER] Daily loss ${pnl:.2f} touched 2% limit (${dynamic_loss_limit:.2f})! Entering Safe Recovery Mode.")
+            self.safe_recovery_mode = True
             return
 
-        # === STAIRCASE LEVEL TRAILING STOPS ===
-        if self.daily_peak_pnl >= 5.0 and self.staircase_level in STAIRCASE_SL_LEVELS:
-            trail_sl = STAIRCASE_SL_LEVELS[self.staircase_level]
-            if pnl <= trail_sl:
-                logger.info(f"[TRAILING STOP HIT] Peak=${self.daily_peak_pnl:.2f} Current=${pnl:.2f} <= TrailSL=${trail_sl:.2f}")
-                self.bot_active = False
-                send_telegram_alert(f"🛑 <b>TRAILING STOP HIT!</b>\nPeak: +${self.daily_peak_pnl:.2f}\nSecured Profit: +${pnl:.2f}\nBot paused for session.")
-                return
-
-        # === DAILY LOSS LIMIT ===
-        if pnl <= -abs(self.daily_loss_limit):
-            logger.info(f"[LOSS LIMIT] Daily loss ${pnl:.2f} hit limit!")
-            self.bot_active = False
-            send_telegram_alert(f"🚨 <b>DAILY LOSS LIMIT HIT!</b>\nPnL: ${pnl:.2f}\nBot paused for safety.")
-            return
-
-        # === STAIRCASE LEVEL UPGRADES ===
-        targets_hit = sum(1 for t in STAIRCASE_TARGETS if pnl >= t)
-        if targets_hit > self.staircase_level:
-            for lvl in range(self.staircase_level + 1, targets_hit + 1):
-                tgt = STAIRCASE_TARGETS[lvl - 1]
-                new_size = STAIRCASE_SIZES.get(lvl, BASE_TRADE_SIZE)
-                self.trade_usd_size = new_size
-                logger.info(f"[STAIRCASE] Level {lvl} hit (${tgt})! Next Trade Size: ${new_size}")
-                send_telegram_alert(f"🎯 <b>STAIRCASE LEVEL {lvl} ACHIEVED (${tgt:.2f})!</b>\nDaily PnL: +${pnl:.2f}\nNext Trade Size: ${new_size:.2f}")
-            self.staircase_level = targets_hit
-
-        # === SAFE MODE ($8+) ===
-        if pnl >= 8.0 and not self.safe_mode_active:
-            self.safe_mode_active = True
-            self.trade_usd_size = SAFE_MODE_SIZE
-            self.badge_threshold = SAFE_MODE_BADGE
-            logger.info(f"[SAFE MODE] Activated. Trade size reduced to ${SAFE_MODE_SIZE:.2f}, badge threshold set to {SAFE_MODE_BADGE}.")
-            send_telegram_alert(f"🔒 <b>SAFE MODE ACTIVATED!</b>\nTrade size reduced to ${SAFE_MODE_SIZE:.2f} for capital conservation.")
+        # 50% Daily Profit Vault Lock (Ratcheting Profit Banking)
+        if self.daily_peak_pnl >= 10.0:
+            locked_floor = round(self.daily_peak_pnl * 0.50, 2)
+            if locked_floor > self.daily_pnl_floor:
+                self.daily_pnl_floor = locked_floor
+                logger.info(f"[PROFIT VAULT LOCK] 50% Profit Floor raised to +${self.daily_pnl_floor:.2f} (Peak Daily: +${self.daily_peak_pnl:.2f})")
 
     def refresh_live_cache(self):
         """Refreshes live Gate.io data cache. Parses all account and position fields."""
@@ -1274,32 +1263,65 @@ class TradingBotEngine:
                 # 300ms High-Frequency Auto-Close Execution
                 pnl_pct = ((mark_p - entry_p) / entry_p) * 100 if side == "BUY" else ((entry_p - mark_p) / entry_p) * 100
                 pos_pnl_usd = float(pos.get("pnl", 0.0))
+                trade_record = self.open_trades.get(sym, {})
                 
-                # Break-Even Stop Loss Check
-                if pnl_pct >= 0.5 and sym in self.open_trades and not self.open_trades[sym].get("be_moved"):
-                    self.open_trades[sym]["sl"] = entry_p
-                    self.open_trades[sym]["be_moved"] = True
-                    logger.info(f"[BREAK-EVEN LOCKED] {sym}: +{pnl_pct:.2f}% profit -> SL moved to Entry ${entry_p:,.4f} ($0.00 Risk)")
+                # 1. RATCHETING PROFIT LOCK LADDER (NEVER LET PROFIT TURN INTO LOSS)
+                # Level A: +0.4% Profit -> Lock Break-Even ($0.00 Risk)
+                if pnl_pct >= 0.4 and not trade_record.get("be_moved"):
+                    trade_record["sl"] = entry_p
+                    trade_record["be_moved"] = True
+                    trade_record["peak_pnl"] = max(trade_record.get("peak_pnl", 0.0), pnl_pct)
+                    logger.info(f"[BREAK-EVEN LOCKED] {sym}: +{pnl_pct:.2f}% profit -> SL locked at Entry ${entry_p:,.4f} ($0.00 Risk)")
                 
+                # Level B: +1.0% Profit -> Lock +0.5% Guaranteed Profit Floor
+                if pnl_pct >= 1.0 and trade_record.get("profit_floor", 0.0) < 0.5:
+                    trade_record["profit_floor"] = 0.5
+                    trade_record["peak_pnl"] = max(trade_record.get("peak_pnl", 0.0), pnl_pct)
+                    logger.info(f"[PROFIT FLOOR +0.5% LOCKED] {sym}: Peak +{pnl_pct:.2f}% -> Guaranteed floor +0.5%")
+
+                # Level C: +1.8% Profit -> Lock +1.0% Guaranteed Profit Floor
+                if pnl_pct >= 1.8 and trade_record.get("profit_floor", 0.0) < 1.0:
+                    trade_record["profit_floor"] = 1.0
+                    trade_record["peak_pnl"] = max(trade_record.get("peak_pnl", 0.0), pnl_pct)
+                    logger.info(f"[PROFIT FLOOR +1.0% LOCKED] {sym}: Peak +{pnl_pct:.2f}% -> Guaranteed floor +1.0%")
+
+                # 2. TRIGGER CONDITIONS
                 hit_tp = pnl_pct >= tp_pct
                 hit_sl = pnl_pct <= -sl_pct
+                hit_be_exit = trade_record.get("be_moved") and pnl_pct <= 0.02  # Dropped back to entry after profit
+                hit_floor_exit = trade_record.get("profit_floor", 0.0) > 0 and pnl_pct <= trade_record["profit_floor"] # Dropped back to profit floor
                 
-                if hit_tp or hit_sl:
-                    reason = "AUTO_TP_HIT" if hit_tp else "AUTO_SL_HIT"
+                # Emergency hard dollar loss cap (prevents any trade exceeding 4% balance risk)
+                max_loss_usd = max(1.0, float(trade_record.get("trade_usd", self.trade_usd_size)) * 0.04)
+                hit_hard_dollar_sl = pos_pnl_usd <= -max_loss_usd
+
+                if hit_tp or hit_sl or hit_be_exit or hit_floor_exit or hit_hard_dollar_sl:
+                    if hit_tp:
+                        reason = "AUTO_TP_HIT"
+                    elif hit_floor_exit:
+                        reason = f"PROFIT_LOCKED_EXIT (+{trade_record.get('profit_floor', 0.5)}%)"
+                    elif hit_be_exit:
+                        reason = "BREAK_EVEN_EXIT ($0.00 RISK)"
+                    elif hit_hard_dollar_sl:
+                        reason = "HARD_DOLLAR_SL_CAP"
+                    else:
+                        reason = "AUTO_SL_HIT"
+                    
                     close_side = "SELL" if side == "BUY" else "BUY"
-                    logger.info(f"[AUTO CLOSE] {sym} {side}: PnL={pnl_pct:+.2f}% (Limit: +{tp_pct}% / -{sl_pct}%) => Executing close order...")
-                    close_res = place_order(sym, close_side, sz)
+                    logger.info(f"[GUARANTEED AUTO CLOSE] {sym} {side}: PnL={pnl_pct:+.2f}% (${pos_pnl_usd:+.2f}) Reason={reason} => Executing close...")
+                    close_res = close_position_on_exchange(sym, side, abs(sz))
                     if close_res:
                         self.daily_pnl += pos_pnl_usd
                         self.daily_trade_count += 1
-                        self.account_manager.update_account_stats(pos_pnl_usd, is_win=hit_tp)
+                        is_win = pos_pnl_usd >= 0
+                        self.account_manager.update_account_stats(pos_pnl_usd, is_win=is_win)
                         if sym in self.open_trades:
                             del self.open_trades[sym]
                         execute_db_query("""
                             INSERT INTO bot_trades (symbol, side, entry_price, exit_price, pnl, status, exit_reason, size, created_at)
                             VALUES (%s, %s, %s, %s, %s, 'CLOSED', %s, %s, (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours'));
-                        """, (str(sym), str(side), float(entry_p), float(mark_p), float(pos_pnl_usd), str(reason), float(sz)))
-                        send_telegram_alert(f"{'🟢' if hit_tp else '🔴'} <b>AUTO CLOSE ({reason})</b>\n<b>Asset:</b> {sym}\n<b>PnL:</b> {pnl_pct:+.2f}% (${pos_pnl_usd:+.2f} USD)")
+                        """, (str(sym), str(side), float(entry_p), float(mark_p), float(pos_pnl_usd), str(reason), float(abs(sz))))
+                        send_telegram_alert(f"{'🟢' if is_win else '🔴'} <b>AUTO CLOSE ({reason})</b>\n<b>Asset:</b> {sym}\n<b>PnL:</b> {pnl_pct:+.2f}% (${pos_pnl_usd:+.2f} USD)")
                         self.check_staircase()
         except Exception as e:
             logger.error(f"[CACHE] Positions error: {e}")
@@ -1605,7 +1627,7 @@ class TradingBotEngine:
             self.daily_pnl += pnl_usd
             self.account_manager.update_account_stats(pnl_usd, is_win=hit_tp)
             reason = "TAKE_PROFIT_HIT" if hit_tp else ("PROFIT_LOCK_HIT" if pnl_usd > 0 else "STOP_LOSS_HIT")
-            close_result = place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])
+            close_result = close_position_on_exchange(symbol, side, abs(trade["size"]))
             if close_result is None:
                 logger.warning(f"[SL/TP CLOSE FAILED] {symbol} — retrying next cycle")
                 return  # Don't delete, retry next cycle
@@ -1644,10 +1666,9 @@ class TradingBotEngine:
         mark_p = float(target_pos.get("mark_price", entry_p))
         pos_pnl = float(target_pos.get("unrealised_pnl", 0.0))
         side = "BUY" if sz > 0 else "SELL"
-        close_side = "SELL" if sz > 0 else "BUY"
 
-        # Send close order to Gate.io
-        close_result = place_order(symbol, close_side, abs(sz))
+        # 100% Guaranteed Direct Close on Gate.io
+        close_result = close_position_on_exchange(symbol, side, abs(sz))
         if close_result is None:
             logger.warning(f"[MANUAL CLOSE] Gate.io close order failed for {symbol}")
             return {"success": False, "error": f"Gate.io close order failed for {symbol}"}

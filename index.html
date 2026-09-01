@@ -688,6 +688,16 @@
         let selectedReportFilter = 'all'; // 'all', 'today', 'yesterday', '7days', 'month', 'custom'
         let customReportDate = '';
         let priceHistory = [];
+        
+        function fmtPrice(p) {
+            const num = parseFloat(p || 0);
+            if (num <= 0) return '0.00';
+            if (num < 0.0001) return num.toFixed(7);
+            if (num < 0.01) return num.toFixed(6);
+            if (num < 1.0) return num.toFixed(4);
+            if (num < 10.0) return num.toFixed(3);
+            return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
         let lastReceivedTerminalData = null;
         let liveTickerMap = {};
         let liveAccountRaw = null;
@@ -1713,12 +1723,12 @@
                                     📅 ${t.created_at || ''}${closedAtStr}
                                 </div>
                                 <div class="tc-details">
-                                    <span>Entry: <b>$${entryP.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</b>${t.exit_price && parseFloat(t.exit_price) !== entryP ? ` → Exit: <b>$${parseFloat(t.exit_price).toFixed(2)}</b>` : ''} | Size: <b>$4.00</b></span>
+                                    <span>Entry: <b>$${fmtPrice(entryP)}</b>${t.exit_price && parseFloat(t.exit_price) !== entryP ? ` → Exit: <b>$${fmtPrice(t.exit_price)}</b>` : ''} | Size: <b>$${parseFloat(t.trade_usd||5.0).toFixed(2)}</b></span>
                                     <span class="${pnlVal>=0?'tc-pnl-green':'tc-pnl-red'}">${statusText}</span>
                                 </div>
                                 <div class="tpsl-box-row">
-                                    <div class="tpsl-box tp-box">AUTO TP: $${tpVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
-                                    <div class="tpsl-box sl-box">AUTO SL: $${slVal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</div>
+                                    <div class="tpsl-box tp-box">AUTO TP: $${fmtPrice(tpVal)}</div>
+                                    <div class="tpsl-box sl-box">AUTO SL: $${fmtPrice(slVal)}</div>
                                 </div>
                                 <div style="margin-top:6px;border-top:1px dashed #1e293b;padding-top:4px;">
                                     <a href="${t.gateio_link || ('https://testnet.gate.com/futures/USDT/' + (t.symbol || 'BTC_USDT') + '?fromlink=www.gate.com&uid=59787607')}" target="_blank" style="color:var(--cyan-accent);font-size:.68rem;font-weight:bold;text-decoration:underline;" onclick="event.stopPropagation();">
@@ -2156,11 +2166,11 @@
                                 </div>
                             </div>
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:0.72rem;color:#94a3b8;background:#090d1690;padding:8px 10px;border-radius:6px;">
-                                <div>Entry: <b style="color:#fff;">$${ep.toFixed(2)}</b></div>
-                                <div>Current: <b style="color:#00f2fe;">$${mp.toFixed(2)}</b></div>
+                                <div>Entry: <b style="color:#fff;">$${fmtPrice(ep)}</b></div>
+                                <div>Current: <b style="color:#00f2fe;">$${fmtPrice(mp)}</b></div>
                                 <div>Live PnL: <b style="color:${pnlColor};font-size:0.82rem;">${isProf?'+$':'-$'}${Math.abs(pnl).toFixed(4)}</b></div>
-                                <div>TP Target: <b style="color:#4ade80;">$${tp.toFixed(2)}</b></div>
-                                <div>SL Target: <b style="color:#f87171;">$${sl.toFixed(2)}</b></div>
+                                <div>TP Target: <b style="color:#4ade80;">$${fmtPrice(tp)}</b></div>
+                                <div>SL Target: <b style="color:#f87171;">$${fmtPrice(sl)}</b></div>
                                 <div>Status: <b style="color:${pnlColor};">${isProf ? '🟢 IN PROFIT' : '🟡 IN DRAWDOWN'}</b></div>
                             </div>
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">

@@ -81,14 +81,72 @@ SLIPPAGE_RATE        = 0.0005 # 0.05% slippage
 PROFIT_LOCK_STEP     = 0.50   # Lock profit every $0.50 increment
 PROFIT_LOCK_OFFSET   = 0.25   # SL trails $0.25 behind the lock level
 
+# ============================================
+# COMPOUND TRADE SIZE TIERS
+# ============================================
+COMPOUND_TIERS = [
+    (0, 249, 5.0),
+    (250, 499, 10.0),
+    (500, 999, 20.0),
+    (1000, 2499, 40.0),
+    (2500, 4999, 100.0),
+    (5000, 9999, 200.0),
+    (10000, float('inf'), 400.0),
+]
+
+def get_compound_trade_size(balance):
+    """Returns trade size based on account balance tier."""
+    for low, high, size in COMPOUND_TIERS:
+        if low <= balance <= high:
+            return size
+    return 5.0
+
+def get_compound_next_tier(balance):
+    """Returns (next_threshold, next_size, progress_pct) for compound sizing."""
+    for i, (low, high, size) in enumerate(COMPOUND_TIERS):
+        if low <= balance <= high:
+            if i + 1 < len(COMPOUND_TIERS):
+                next_thresh = COMPOUND_TIERS[i + 1][0]
+                next_size = COMPOUND_TIERS[i + 1][2]
+                progress = ((balance - low) / (next_thresh - low)) * 100 if next_thresh > low else 100
+                return next_thresh, next_size, round(min(100, progress), 1)
+            return 0, size, 100.0
+    return 250, 10.0, 0.0
+
 ASSET_NAMES_EN = {
-    "XAU_USDT":   "Gold (XAU/USDT)",
-    "WTI_USDT":   "Crude Oil (WTI/USDT)",
+    # CRYPTO (12)
     "BTC_USDT":   "Bitcoin (BTC/USDT)",
     "ETH_USDT":   "Ethereum (ETH/USDT)",
-    "US100_USDT": "Nasdaq 100 (US100/USDT)",
+    "SOL_USDT":   "Solana (SOL/USDT)",
+    "XRP_USDT":   "Ripple (XRP/USDT)",
+    "BNB_USDT":   "BNB (BNB/USDT)",
+    "DOGE_USDT":  "Dogecoin (DOGE/USDT)",
+    "ADA_USDT":   "Cardano (ADA/USDT)",
+    "LINK_USDT":  "Chainlink (LINK/USDT)",
+    "AVAX_USDT":  "Avalanche (AVAX/USDT)",
+    "DOT_USDT":   "Polkadot (DOT/USDT)",
+    "NEAR_USDT":  "NEAR Protocol (NEAR/USDT)",
+    "APT_USDT":   "Aptos (APT/USDT)",
+    # STOCKS (10)
     "AAPL_USDT":  "Apple Inc (AAPL/USDT)",
     "NVDA_USDT":  "Nvidia Corp (NVDA/USDT)",
+    "TSLA_USDT":  "Tesla Inc (TSLA/USDT)",
+    "AMZN_USDT":  "Amazon Inc (AMZN/USDT)",
+    "MSFT_USDT":  "Microsoft (MSFT/USDT)",
+    "GOOG_USDT":  "Alphabet Inc (GOOG/USDT)",
+    "META_USDT":  "Meta Platforms (META/USDT)",
+    "AMD_USDT":   "AMD Inc (AMD/USDT)",
+    "AVGO_USDT":  "Broadcom Inc (AVGO/USDT)",
+    "NFLX_USDT":  "Netflix Inc (NFLX/USDT)",
+    # COMMODITIES & INDICES (8)
+    "XAU_USDT":   "Gold (XAU/USDT)",
+    "XAG_USDT":   "Silver (XAG/USDT)",
+    "WTI_USDT":   "Crude Oil (WTI/USDT)",
+    "US100_USDT": "Nasdaq 100 (US100/USDT)",
+    "SP500_USDT": "S&P 500 (SP500/USDT)",
+    "IBIT_USDT":  "iShares Bitcoin (IBIT/USDT)",
+    "SLV_USDT":   "Silver Trust (SLV/USDT)",
+    "US30_USDT":  "Dow Jones (US30/USDT)",
 }
 ASSETS = list(ASSET_NAMES_EN.keys())
 
@@ -371,7 +429,7 @@ def fetch_live_public_klines(symbol, interval="1m", limit=100):
         logger.error(f"Gate.io klines fetch error for {symbol}: {e}")
 
     clean_sym = symbol.replace('_', '')
-    binance_map = {'BTCUSDT': 'BTCUSDT', 'ETHUSDT': 'ETHUSDT', 'XAUUSDT': None, 'WTIUSDT': None, 'US100USDT': None, 'AAPLUSDT': None, 'NVDAUSDT': None}
+    binance_map = {'BTCUSDT': 'BTCUSDT', 'ETHUSDT': 'ETHUSDT', 'SOLUSDT': 'SOLUSDT', 'XRPUSDT': 'XRPUSDT', 'BNBUSDT': 'BNBUSDT', 'DOGEUSDT': 'DOGEUSDT', 'ADAUSDT': 'ADAUSDT', 'LINKUSDT': 'LINKUSDT', 'AVAXUSDT': 'AVAXUSDT', 'DOTUSDT': 'DOTUSDT', 'NEARUSDT': 'NEARUSDT', 'APTUSDT': 'APTUSDT', 'XAUUSDT': None, 'WTIUSDT': None, 'US100USDT': None, 'AAPLUSDT': None, 'NVDAUSDT': None}
     if clean_sym in binance_map and binance_map[clean_sym]:
         try:
             url = f"https://api.binance.com/api/v3/klines?symbol={clean_sym}&interval={interval}&limit={limit}"
@@ -720,6 +778,7 @@ class TradingBotEngine:
         self.daily_pnl          = 0.0
         self.daily_peak_pnl     = 0.0
         self.daily_pnl_floor    = 0.0  # Profit lock floor — ratchets up every $0.50
+        self.daily_trade_count  = 0
         self.staircase_level    = 0
         self.safe_mode_active   = False
         self.bot_active         = True
@@ -754,6 +813,29 @@ class TradingBotEngine:
             "US100_USDT": {"price": 19425.58, "rsi_1m": 63.3, "macd_1m": 8.01, "signal_1m": 0.31, "vol_ratio": 1.30, "ema200_15m": 19000, "ema200_1h": 19000, "sentiment": "NEUTRAL"},
             "AAPL_USDT": {"price": 233.03, "rsi_1m": 65.0, "macd_1m": 0.62, "signal_1m": 0.57, "vol_ratio": 1.22, "ema200_15m": 220, "ema200_1h": 220, "sentiment": "POSITIVE"},
             "NVDA_USDT": {"price": 133.58, "rsi_1m": 72.8, "macd_1m": 0.19, "signal_1m": 0.16, "vol_ratio": 1.20, "ema200_15m": 125, "ema200_1h": 125, "sentiment": "POSITIVE"},
+            "SOL_USDT": {"price": 180, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 180, "ema200_1h": 180, "sentiment": "NEUTRAL"},
+            "XRP_USDT": {"price": 2.5, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 2.5, "ema200_1h": 2.5, "sentiment": "NEUTRAL"},
+            "BNB_USDT": {"price": 600, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 600, "ema200_1h": 600, "sentiment": "NEUTRAL"},
+            "DOGE_USDT": {"price": 0.35, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 0.35, "ema200_1h": 0.35, "sentiment": "NEUTRAL"},
+            "ADA_USDT": {"price": 0.75, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 0.75, "ema200_1h": 0.75, "sentiment": "NEUTRAL"},
+            "LINK_USDT": {"price": 18, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 18, "ema200_1h": 18, "sentiment": "NEUTRAL"},
+            "AVAX_USDT": {"price": 35, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 35, "ema200_1h": 35, "sentiment": "NEUTRAL"},
+            "DOT_USDT": {"price": 7.5, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 7.5, "ema200_1h": 7.5, "sentiment": "NEUTRAL"},
+            "NEAR_USDT": {"price": 7.0, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 7.0, "ema200_1h": 7.0, "sentiment": "NEUTRAL"},
+            "APT_USDT": {"price": 12.0, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 12.0, "ema200_1h": 12.0, "sentiment": "NEUTRAL"},
+            "TSLA_USDT": {"price": 280, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 280, "ema200_1h": 280, "sentiment": "NEUTRAL"},
+            "AMZN_USDT": {"price": 195, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 195, "ema200_1h": 195, "sentiment": "NEUTRAL"},
+            "MSFT_USDT": {"price": 430, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 430, "ema200_1h": 430, "sentiment": "NEUTRAL"},
+            "GOOG_USDT": {"price": 175, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 175, "ema200_1h": 175, "sentiment": "NEUTRAL"},
+            "META_USDT": {"price": 530, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 530, "ema200_1h": 530, "sentiment": "NEUTRAL"},
+            "AMD_USDT": {"price": 165, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 165, "ema200_1h": 165, "sentiment": "NEUTRAL"},
+            "AVGO_USDT": {"price": 180, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 180, "ema200_1h": 180, "sentiment": "NEUTRAL"},
+            "NFLX_USDT": {"price": 750, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 750, "ema200_1h": 750, "sentiment": "NEUTRAL"},
+            "XAG_USDT": {"price": 32, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 32, "ema200_1h": 32, "sentiment": "NEUTRAL"},
+            "SP500_USDT": {"price": 5600, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 5600, "ema200_1h": 5600, "sentiment": "NEUTRAL"},
+            "IBIT_USDT": {"price": 55, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 55, "ema200_1h": 55, "sentiment": "NEUTRAL"},
+            "SLV_USDT": {"price": 28, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 28, "ema200_1h": 28, "sentiment": "NEUTRAL"},
+            "US30_USDT": {"price": 42000, "rsi_1m": 50, "macd_1m": 0.0, "signal_1m": 0.0, "vol_ratio": 1.0, "ema200_15m": 42000, "ema200_1h": 42000, "sentiment": "NEUTRAL"},
         }
         for sym, d in defaults.items():
             self.market_snapshots[sym] = {
@@ -774,6 +856,7 @@ class TradingBotEngine:
             self.daily_pnl = 0.0
             self.daily_peak_pnl = 0.0
             self.daily_pnl_floor = 0.0
+            self.daily_trade_count = 0
             self.staircase_level = 0
             self.safe_mode_active = False
             self.trade_usd_size = USER_TRADE_SIZE
@@ -1084,7 +1167,10 @@ class TradingBotEngine:
             self.execute_trade(symbol, "SELL", curr_price, sell_badges)
 
     def execute_trade(self, symbol, side, price, badge_count=4):
-        smart_size = self.trade_usd_size
+        compound_size = get_compound_trade_size(self.total_balance)
+        smart_size = max(compound_size, self.trade_usd_size)  # Use higher of compound or staircase
+        self.trade_usd_size = smart_size  # Update for display
+        self.daily_trade_count += 1
         tp, sl = set_tpsl(symbol, price, side)
         contracts = max(1, int(smart_size))  # Gate.io USDT-M: 1 contract ≈ $1 notional
         order_result = place_order(symbol, side, contracts)
@@ -1165,6 +1251,76 @@ class TradingBotEngine:
             send_telegram_alert(f"{'🟢' if hit_tp else ('🔒' if pnl_usd>0 else '🔴')} <b>TRADE CLOSED ({reason})</b>\n<b>Asset:</b> {symbol}\n<b>PnL:</b> {'+' if pnl_usd>=0 else ''}${pnl_usd:.2f} USD")
             del self.open_trades[symbol]
             self.check_staircase()
+
+    def manual_close_trade(self, symbol):
+        """Manually close a trade by symbol. Returns dict with result."""
+        # Check cached open positions for the symbol
+        pos_list = gate_api_request("GET", "/futures/usdt/positions")
+        target_pos = None
+        if pos_list and isinstance(pos_list, list):
+            for p in pos_list:
+                sym = p.get("contract", "")
+                sz = int(p.get("size", 0))
+                if sym == symbol and sz != 0:
+                    target_pos = p
+                    break
+
+        if not target_pos:
+            # Also check internal open_trades
+            if symbol in self.open_trades:
+                trade = self.open_trades[symbol]
+                del self.open_trades[symbol]
+                return {"success": True, "symbol": symbol, "pnl": 0.0, "reason": "INTERNAL_ONLY"}
+            return {"success": False, "error": f"No open position found for {symbol}"}
+
+        sz = int(target_pos.get("size", 0))
+        entry_p = float(target_pos.get("entry_price", 0))
+        mark_p = float(target_pos.get("mark_price", entry_p))
+        pos_pnl = float(target_pos.get("unrealised_pnl", 0.0))
+        side = "BUY" if sz > 0 else "SELL"
+        close_side = "SELL" if sz > 0 else "BUY"
+
+        # Send close order to Gate.io
+        close_result = place_order(symbol, close_side, abs(sz))
+        if close_result is None:
+            logger.warning(f"[MANUAL CLOSE] Gate.io close order failed for {symbol}")
+            return {"success": False, "error": f"Gate.io close order failed for {symbol}"}
+
+        # Update PnL tracking
+        self.daily_pnl += pos_pnl
+        self.daily_trade_count += 1
+
+        # Update win stats
+        if symbol in self.win_stats:
+            self.win_stats[symbol]["trades"] += 1
+            self.win_stats[symbol]["total_pnl"] += pos_pnl
+            if pos_pnl > 0:
+                self.win_stats[symbol]["wins"] += 1
+            else:
+                self.win_stats[symbol]["losses"] += 1
+
+        # Remove from internal open trades
+        if symbol in self.open_trades:
+            del self.open_trades[symbol]
+
+        # Database update
+        execute_db_query("""
+            INSERT INTO bot_trades (symbol, side, entry_price, exit_price, pnl, status, exit_reason, size, created_at)
+            VALUES (%s, %s, %s, %s, %s, 'CLOSED', 'MANUAL_CLOSE', %s, (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours'));
+        """, (str(symbol), str(side), float(entry_p), float(mark_p), float(pos_pnl), float(abs(sz))))
+
+        # Telegram alert
+        pnl_sign = '+' if pos_pnl >= 0 else ''
+        send_telegram_alert(f"🟡 <b>MANUAL CLOSE: {ASSET_NAMES_EN.get(symbol, symbol)}</b>\nSide: {side}\nEntry: ${entry_p:,.2f}\nExit: ${mark_p:,.2f}\nPnL: {pnl_sign}${pos_pnl:.2f} USD")
+
+        # Check staircase after close
+        self.check_staircase()
+
+        # Update compound trade size
+        self.trade_usd_size = get_compound_trade_size(self.total_balance)
+
+        logger.info(f"[MANUAL CLOSE] {symbol}: PnL=${pos_pnl:.4f}, Daily PnL=${self.daily_pnl:.4f}")
+        return {"success": True, "symbol": symbol, "pnl": round(pos_pnl, 4), "daily_pnl": round(self.daily_pnl, 4)}
 
     def run_heartbeat(self):
         while True:
@@ -1501,6 +1657,11 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             "daily_pnl_floor": round(bot_engine.daily_pnl_floor, 4),
             "next_target": _next_tgt,
             "target_progress": round(_progress, 1),
+            "compound_trade_size": get_compound_trade_size(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0))),
+            "compound_next_threshold": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[0],
+            "compound_next_size": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[1],
+            "compound_progress": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[2],
+            "daily_trade_count": bot_engine.daily_trade_count,
             "daily_target": USER_DAILY_TARGET,
             "daily_loss_limit": USER_DAILY_LOSS_LIMIT,
             "trade_usd_size": bot_engine.trade_usd_size,
@@ -1517,6 +1678,53 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         with state_lock:
             resp_str = json.dumps(response_data, cls=NpEncoder)
         self.wfile.write(resp_str.encode("utf-8"))
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def do_POST(self):
+        req_path = urllib.parse.urlparse(self.path).path.rstrip('/') or '/'
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+
+        try:
+            body = json.loads(post_data.decode('utf-8'))
+        except Exception:
+            body = {}
+
+        if req_path == '/api/close_trade':
+            symbol = body.get('symbol')
+            symbols = body.get('symbols', [])
+            if symbol:
+                symbols = [symbol]
+
+            if not symbols:
+                resp = {"success": False, "error": "No symbol(s) provided"}
+            else:
+                results = []
+                for sym in symbols:
+                    result = bot_engine.manual_close_trade(sym)
+                    results.append(result)
+                resp = {
+                    "success": all(r.get("success") for r in results),
+                    "closed": results,
+                    "daily_pnl": round(bot_engine.daily_pnl, 4),
+                    "total_balance": float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)),
+                    "trade_usd_size": bot_engine.trade_usd_size
+                }
+        else:
+            resp = {"error": "Unknown endpoint"}
+
+        with state_lock:
+            resp_str = json.dumps(resp, cls=NpEncoder)
+        self.wfile.write(resp_str.encode('utf-8'))
 
 def start_health_server():
     server = ReusableHTTPServer(("0.0.0.0", HEALTH_SERVER_PORT), HealthCheckHandler)
@@ -1561,12 +1769,18 @@ def main():
     threading.Thread(target=bot_engine.run_heartbeat, daemon=True).start()
     threading.Thread(target=keep_render_alive, daemon=True).start()
 
-    logger.info("[MAIN LOOP] 500ms scan cycle active for all 7 assets.")
+    logger.info(f"[MAIN LOOP] 500ms rotating scan for {len(ASSETS)} assets.")
+    scan_batch_idx = 0
+    batch_size = 10
     while True:
         try:
             if bot_engine.bot_active:
-                for symbol in ASSETS:
+                batch = ASSETS[scan_batch_idx:scan_batch_idx + batch_size]
+                for symbol in batch:
                     bot_engine.process_symbol(symbol)
+                scan_batch_idx += batch_size
+                if scan_batch_idx >= len(ASSETS):
+                    scan_batch_idx = 0
         except Exception as e:
             logger.error(f"[MAIN LOOP ERROR] {e}")
         time.sleep(0.5)

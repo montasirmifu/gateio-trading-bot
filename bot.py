@@ -82,39 +82,144 @@ PROFIT_LOCK_STEP     = 0.50   # Lock profit every $0.50 increment
 PROFIT_LOCK_OFFSET   = 0.25   # SL trails $0.25 behind the lock level
 
 # ============================================
-# COMPOUND TRADE SIZE TIERS
+# DYNAMIC COMPOUNDING & ACCOUNT MANAGEMENT v5.0
 # ============================================
-COMPOUND_TIERS = [
-    (0,    249,  5.0),
-    (250,  499,  8.0),
-    (500,  999,  15.0),
-    (1000, 2499, 30.0),
-    (2500, 4999, 60.0),
-    (5000, 9999, 120.0),
-    (10000, 999999, 250.0),
-]
+TRADE_SIZE_PCT          = 0.05   # 5% of current balance
+MIN_TRADE_SIZE          = 1.00   # Min $1.00 for small accounts
+MAX_TRADE_SIZE          = 50000.0# Max $50,000 for liquidity safety
+MAX_MARGIN_ALLOC_PCT    = 0.40   # 40% Max margin in market (60% safe vault reserve)
+DAILY_LOSS_LIMIT_PCT    = 0.04   # 4% Dynamic Compounding Daily Loss Limit
 
 def get_compound_trade_size(balance):
-    """Returns trade size based on account balance tier."""
-    for low, high, size in COMPOUND_TIERS:
-        if balance >= low and balance <= high:
-            return size
-    # Fallback: use last tier if above all
-    if balance > COMPOUND_TIERS[-1][1]:
-        return COMPOUND_TIERS[-1][2]
-    return COMPOUND_TIERS[0][2]  # minimum
+    """5% Rule: Returns trade size as 5% of balance with min $1.0 and max $50,000."""
+    sz = round(float(balance) * TRADE_SIZE_PCT, 2)
+    return max(MIN_TRADE_SIZE, min(MAX_TRADE_SIZE, sz))
 
 def get_compound_next_tier(balance):
-    """Returns (next_threshold, next_size, progress_pct) for compound sizing."""
-    for i, (low, high, size) in enumerate(COMPOUND_TIERS):
-        if low <= balance <= high:
-            if i + 1 < len(COMPOUND_TIERS):
-                next_thresh = COMPOUND_TIERS[i + 1][0]
-                next_size = COMPOUND_TIERS[i + 1][2]
-                progress = ((balance - low) / (next_thresh - low)) * 100 if next_thresh > low else 100
-                return next_thresh, next_size, round(min(100, progress), 1)
-            return 0, size, 100.0
-    return 250, 10.0, 0.0
+    """Returns (next_threshold, next_size, progress_pct) for continuous 10% compound milestones."""
+    bal = max(20.0, float(balance))
+    base = 20.0
+    step_idx = math.floor(math.log(max(bal / base, 1.0), 1.10)) if bal > base else 0
+    tier_low = round(base * (1.10 ** step_idx), 2)
+    tier_high = round(base * (1.10 ** (step_idx + 1)), 2)
+    if tier_high <= tier_low:
+        tier_high = tier_low + 10.0
+    progress = ((bal - tier_low) / (tier_high - tier_low)) * 100.0
+    next_size = round(tier_high * TRADE_SIZE_PCT, 2)
+    return tier_high, next_size, round(min(100.0, max(0.0, progress)), 1)
+
+class AccountManager:
+    """Manages multiple Gate.io accounts with auto-detection, dynamic sizing, and persistent tracking."""
+    def __init__(self):
+        self.accounts = {}
+        self.current_account_id = "59787607"
+
+    def detect_and_sync_account(self, raw_acc):
+        if not raw_acc or not isinstance(raw_acc, dict):
+            return self.current_account_id
+        acc_id = str(raw_acc.get("user", "59787607"))
+        bal = float(raw_acc.get("cross_margin_balance", raw_acc.get("total", 100.0)))
+        un_pnl = float(raw_acc.get("cross_unrealised_pnl", raw_acc.get("unrealised_pnl", 0.0)))
+        trade_sz = get_compound_trade_size(bal)
+        daily_loss_lim = round(bal * DAILY_LOSS_LIMIT_PCT, 2)
+
+        if acc_id not in self.accounts:
+            self.accounts[acc_id] = {
+                "account_id": acc_id,
+                "balance": round(bal, 2),
+                "initial_balance": round(bal, 2),
+                "daily_pnl": 0.0,
+                "total_pnl": 0.0,
+                "unrealised_pnl": round(un_pnl, 4),
+                "trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0,
+                "trade_size": trade_sz,
+                "daily_loss_limit": daily_loss_lim,
+                "safe_vault_reserve": round(bal * (1.0 - MAX_MARGIN_ALLOC_PCT), 2),
+                "max_active_margin": round(bal * MAX_MARGIN_ALLOC_PCT, 2),
+                "last_updated": get_bd_time_str()
+            }
+        else:
+            self.accounts[acc_id]["balance"] = round(bal, 2)
+            self.accounts[acc_id]["unrealised_pnl"] = round(un_pnl, 4)
+            self.accounts[acc_id]["trade_size"] = trade_sz
+            self.accounts[acc_id]["daily_loss_limit"] = daily_loss_lim
+            self.accounts[acc_id]["safe_vault_reserve"] = round(bal * (1.0 - MAX_MARGIN_ALLOC_PCT), 2)
+            self.accounts[acc_id]["max_active_margin"] = round(bal * MAX_MARGIN_ALLOC_PCT, 2)
+            self.accounts[acc_id]["last_updated"] = get_bd_time_str()
+
+        self.current_account_id = acc_id
+        return acc_id
+
+    def get_current_account(self):
+        if self.current_account_id and self.current_account_id in self.accounts:
+            return self.accounts[self.current_account_id]
+        return None
+
+    def get_all_accounts(self):
+        return self.accounts
+
+    def switch_account(self, account_id):
+        if str(account_id) in self.accounts:
+            self.current_account_id = str(account_id)
+            return True
+        return False
+
+    def update_account_stats(self, pnl, is_win):
+        acc = self.get_current_account()
+        if acc:
+            acc["total_pnl"] = round(acc["total_pnl"] + pnl, 4)
+            acc["daily_pnl"] = round(acc["daily_pnl"] + pnl, 4)
+            acc["trades"] += 1
+            if is_win:
+                acc["wins"] += 1
+            else:
+                acc["losses"] += 1
+            acc["win_rate"] = round((acc["wins"] / max(acc["trades"], 1)) * 100, 1)
+            acc["balance"] = round(acc["balance"] + pnl, 2)
+            acc["trade_size"] = get_compound_trade_size(acc["balance"])
+            acc["daily_loss_limit"] = round(acc["balance"] * DAILY_LOSS_LIMIT_PCT, 2)
+
+class DynamicCompounder:
+    """Calculates continuous 10% compound milestones and records snapshots."""
+    def __init__(self, account_manager):
+        self.account_manager = account_manager
+        self.compound_history = []
+
+    def get_current_trade_size(self):
+        acc = self.account_manager.get_current_account()
+        if not acc:
+            return 5.0
+        return acc.get("trade_size", 5.0)
+
+    def get_next_tier_info(self):
+        acc = self.account_manager.get_current_account()
+        bal = acc["balance"] if acc else 100.0
+        nxt_thresh, nxt_sz, prog = get_compound_next_tier(bal)
+        return {
+            "current_size": get_compound_trade_size(bal),
+            "next_threshold": nxt_thresh,
+            "next_size": nxt_sz,
+            "progress": prog
+        }
+
+    def record_compound_snapshot(self):
+        acc = self.account_manager.get_current_account()
+        if acc:
+            self.compound_history.append({
+                "timestamp": get_bd_time_str(),
+                "balance": acc["balance"],
+                "trade_size": acc["trade_size"],
+                "total_pnl": acc["total_pnl"],
+                "daily_pnl": acc["daily_pnl"]
+            })
+            if len(self.compound_history) > 30:
+                self.compound_history.pop(0)
+
+    def get_compound_history(self):
+        return self.compound_history
 
 # ============================================
 # ASSET TIER CLASSIFICATION & PER-TIER CONFIG
@@ -898,13 +1003,15 @@ backtest_engine = BacktestEngine()
 # ============================================
 class TradingBotEngine:
     def __init__(self):
+        self.account_manager    = AccountManager()
+        self.compounder         = DynamicCompounder(self.account_manager)
         self.total_balance      = USER_TOTAL_BALANCE
-        self.safe_capital       = round(USER_TOTAL_BALANCE * 0.60, 2)
-        self.trading_capital    = round(USER_TOTAL_BALANCE * 0.40, 2)
-        self.trade_usd_size     = USER_TRADE_SIZE
+        self.safe_capital       = round(USER_TOTAL_BALANCE * (1.0 - MAX_MARGIN_ALLOC_PCT), 2)
+        self.trading_capital    = round(USER_TOTAL_BALANCE * MAX_MARGIN_ALLOC_PCT, 2)
+        self.trade_usd_size     = get_compound_trade_size(USER_TOTAL_BALANCE)
         self.daily_target       = USER_DAILY_TARGET
-        self.daily_loss_limit   = USER_DAILY_LOSS_LIMIT
-        self.max_open_trades    = USER_MAX_OPEN_TRADES
+        self.daily_loss_limit   = round(USER_TOTAL_BALANCE * DAILY_LOSS_LIMIT_PCT, 2)
+        self.max_open_trades    = 999  # Unlimited trades (bounded by 40% active margin cap)
         self.badge_threshold    = USER_BADGE_THRESHOLD
         self.daily_pnl          = 0.0
         self.daily_peak_pnl     = 0.0
@@ -912,6 +1019,8 @@ class TradingBotEngine:
         self.daily_trade_count  = 0
         self.staircase_level    = 0
         self.safe_mode_active   = False
+        self.safe_recovery_mode = False  # Activates on dynamic loss limit hit for A+ recovery signals
+        self.consecutive_losses = 0
         self.bot_active         = True
         self.open_trades        = {}
         self.cooldowns          = {}
@@ -919,8 +1028,8 @@ class TradingBotEngine:
         self.win_stats          = {sym: {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0} for sym in ASSETS}
         self.processed_trade_ids = set()
         self.last_reset_day     = get_bd_time().day
-        self.is_live_data       = False # Problem 4: Flag for live vs fallback data
-        self.unrealised_pnl     = 0.0  # Gate.io unrealised PnL (display only, not for staircase logic)
+        self.is_live_data       = False
+        self.unrealised_pnl     = 0.0
 
         self.cached_account_raw = {
             "cross_margin_balance": "0.00",
@@ -1053,7 +1162,25 @@ class TradingBotEngine:
                 self.total_balance = cross_bal
                 self.unrealised_pnl = un_pnl
                 self.is_live_data = True
-                logger.info(f"[CACHE] Balance: ${cross_bal:.2f}, Unrealized PnL: ${un_pnl:+.2f}")
+                
+                # Dynamic Account Manager Sync
+                self.account_manager.detect_and_sync_account(self.cached_account_raw)
+                self.trade_usd_size = self.compounder.get_current_trade_size()
+                
+                # Dynamic Compounding Daily Loss Limit Check
+                dynamic_loss_limit = round(self.total_balance * DAILY_LOSS_LIMIT_PCT, 2)
+                self.daily_loss_limit = dynamic_loss_limit
+                if self.daily_pnl <= -dynamic_loss_limit:
+                    if not self.safe_recovery_mode:
+                        self.safe_recovery_mode = True
+                        logger.info(f"[DYNAMIC LOSS LIMIT HIT] PnL -${abs(self.daily_pnl):.2f} hit 4% limit (-${dynamic_loss_limit:.2f}). Safe Recovery Mode activated.")
+                        send_telegram_alert(f"🛡️ <b>DYNAMIC LOSS LIMIT HIT (-${dynamic_loss_limit:.2f})</b>\nEntered Safe Recovery Mode — taking only high-confidence A+ setups.")
+                elif self.daily_pnl >= -round(dynamic_loss_limit * 0.4, 2) and self.safe_recovery_mode:
+                    self.safe_recovery_mode = False
+                    logger.info(f"[SAFE RECOVERY DEACTIVATED] Daily PnL recovered to ${self.daily_pnl:.2f}. Normal trading restored.")
+                    send_telegram_alert(f"🟢 <b>SAFE RECOVERY SUCCESSFUL!</b>\nDaily PnL recovered to +${self.daily_pnl:.2f}. Full high-frequency trading active.")
+                
+                logger.info(f"[CACHE] Balance: ${cross_bal:.2f}, Unrealized PnL: ${un_pnl:+.2f} | Size: ${self.trade_usd_size:.2f}")
             else:
                 self.is_live_data = False
                 self.cached_account_raw = {
@@ -1081,7 +1208,18 @@ class TradingBotEngine:
                     pos_pnl = float(p.get("unrealised_pnl", 0.0))
                     side = "BUY" if sz > 0 else "SELL"
                     order_id = str(p.get("id", p.get("order_id", "1")))
-                    logger.info(f"[CACHE] Found open position: {side} {abs(sz)} {sym} @ ${entry_p:.2f}")
+                    tier_cfg = get_asset_config(sym)
+                    tp_pct = tier_cfg.get("tp_pct", USER_TAKE_PROFIT_PCT)
+                    sl_pct = tier_cfg.get("sl_pct", USER_STOP_LOSS_PCT)
+                    
+                    tp_val = round(entry_p * (1.0 + tp_pct / 100.0) if side == "BUY" else entry_p * (1.0 - tp_pct / 100.0), 4)
+                    sl_val = round(entry_p * (1.0 - sl_pct / 100.0) if side == "BUY" else entry_p * (1.0 + sl_pct / 100.0), 4)
+                    
+                    # Break-Even SL: Move SL to entry if in +0.5% profit
+                    pnl_pct = ((mark_p - entry_p) / entry_p) * 100 if side == "BUY" else ((entry_p - mark_p) / entry_p) * 100
+                    if pnl_pct >= 0.5:
+                        sl_val = entry_p
+                    
                     open_trades_new.append({
                         "symbol": sym,
                         "symbol_en": ASSET_NAMES_EN.get(sym, sym),
@@ -1093,9 +1231,10 @@ class TradingBotEngine:
                         "status": "OPEN",
                         "data_source": "LIVE_GATEIO_API",
                         "created_at": get_bd_time_str(),
-                        "tp": round(entry_p * (1.0 + USER_TAKE_PROFIT_PCT / 100.0) if side == "BUY" else entry_p * (1.0 - USER_TAKE_PROFIT_PCT / 100.0), 4),
-                        "sl": round(entry_p * (1.0 - USER_STOP_LOSS_PCT / 100.0) if side == "BUY" else entry_p * (1.0 + USER_STOP_LOSS_PCT / 100.0), 4),
+                        "tp": tp_val,
+                        "sl": sl_val,
                         "size": abs(sz),
+                        "trade_usd": self.trade_usd_size,
                         "order_id": order_id,
                         "gateio_link": link_base.format(sym=sym)
                     })
@@ -1124,6 +1263,7 @@ class TradingBotEngine:
                         'side': side,
                         'entry_price': entry_p,
                         'size': sz,
+                        'trade_usd': self.trade_usd_size,
                         'tp': tp_val,
                         'sl': sl_val,
                         'created_at': pos.get('created_at', get_bd_time_str()),
@@ -1134,6 +1274,12 @@ class TradingBotEngine:
                 # 300ms High-Frequency Auto-Close Execution
                 pnl_pct = ((mark_p - entry_p) / entry_p) * 100 if side == "BUY" else ((entry_p - mark_p) / entry_p) * 100
                 pos_pnl_usd = float(pos.get("pnl", 0.0))
+                
+                # Break-Even Stop Loss Check
+                if pnl_pct >= 0.5 and sym in self.open_trades and not self.open_trades[sym].get("be_moved"):
+                    self.open_trades[sym]["sl"] = entry_p
+                    self.open_trades[sym]["be_moved"] = True
+                    logger.info(f"[BREAK-EVEN LOCKED] {sym}: +{pnl_pct:.2f}% profit -> SL moved to Entry ${entry_p:,.4f} ($0.00 Risk)")
                 
                 hit_tp = pnl_pct >= tp_pct
                 hit_sl = pnl_pct <= -sl_pct
@@ -1146,6 +1292,7 @@ class TradingBotEngine:
                     if close_res:
                         self.daily_pnl += pos_pnl_usd
                         self.daily_trade_count += 1
+                        self.account_manager.update_account_stats(pos_pnl_usd, is_win=hit_tp)
                         if sym in self.open_trades:
                             del self.open_trades[sym]
                         execute_db_query("""
@@ -1303,8 +1450,16 @@ class TradingBotEngine:
             abs(curr_price - resistance_level) / max(curr_price, 1) <= 0.03 # Near resistance
         ])
         
-        # REQUIRED CONFIRMATIONS: 2 badges (or 1 on volume spike)
-        required_badges = 1 if is_volume_spike else self.badge_threshold
+        # SAFE RECOVERY MODE vs NORMAL EXECUTION
+        if self.safe_recovery_mode:
+            # Stricter A+ filter during recovery: requires 3 confirmations and volume boost
+            required_badges = 3
+            signal_ready_buy = is_volume_spike and buy_confirmations >= required_badges
+            signal_ready_sell = is_volume_spike and sell_confirmations >= required_badges
+        else:
+            required_badges = 1 if is_volume_spike else self.badge_threshold
+            signal_ready_buy = mtf_rsi_buy and buy_confirmations >= required_badges
+            signal_ready_sell = mtf_rsi_sell and sell_confirmations >= required_badges
 
         total_buy = buy_confirmations + (1 if mtf_rsi_buy else 0)
         total_sell = sell_confirmations + (1 if mtf_rsi_sell else 0)
@@ -1326,8 +1481,8 @@ class TradingBotEngine:
             self.monitor_open_position(symbol, curr_price)
             return
 
-        # 2. Check if maximum 4 open trades are already active
-        if not self.bot_active or len(self.open_trades) >= self.max_open_trades:
+        # 2. Check bot active status
+        if not self.bot_active:
             return
 
         # 3. Check cooldown before placing a NEW trade
@@ -1336,16 +1491,29 @@ class TradingBotEngine:
                 return
 
         # 4. Execute high-probability trade
-        if mtf_rsi_buy and buy_confirmations >= required_badges:
+        if signal_ready_buy:
             self.execute_trade(symbol, "BUY", curr_price, total_buy)
-        elif mtf_rsi_sell and sell_confirmations >= required_badges:
+        elif signal_ready_sell:
             self.execute_trade(symbol, "SELL", curr_price, total_sell)
 
     def execute_trade(self, symbol, side, price, badge_count=4):
         tier_cfg = get_asset_config(symbol)
-        compound_size = get_compound_trade_size(self.total_balance)
-        smart_size = max(compound_size, self.trade_usd_size)  # Use higher of compound or staircase
-        self.trade_usd_size = smart_size  # Update for display
+        dynamic_size = self.compounder.get_current_trade_size()
+        
+        # In Safe Recovery Mode: 50% reduced size for risk control
+        if self.safe_recovery_mode:
+            smart_size = max(MIN_TRADE_SIZE, round(dynamic_size * 0.5, 2))
+        else:
+            smart_size = max(MIN_TRADE_SIZE, dynamic_size)
+            
+        # 35-40% Active Margin Cap (60-65% Safe Vault Reserve)
+        active_margin = sum(float(t.get("trade_usd", 5.0)) for t in self.open_trades.values())
+        max_allowed_margin = self.total_balance * MAX_MARGIN_ALLOC_PCT
+        if (active_margin + smart_size) > max_allowed_margin:
+            logger.debug(f"[MARGIN CAP] Active: ${active_margin:.2f} + New: ${smart_size:.2f} > Max: ${max_allowed_margin:.2f} (40% Cap). Safe vault holds 60%.")
+            return
+
+        self.trade_usd_size = smart_size
         self.daily_trade_count += 1
         tp, sl = set_tpsl(symbol, price, side, tier_cfg=tier_cfg)
         contracts = max(1, int(smart_size))  # Gate.io USDT-M: 1 contract ≈ $1 notional
@@ -1358,14 +1526,16 @@ class TradingBotEngine:
         self.open_trades[symbol] = {
             "symbol": symbol, "symbol_en": ASSET_NAMES_EN.get(symbol, symbol),
             "side": side, "entry_price": price, "size": contracts,
-            "trade_usd": smart_size, "tp": tp, "sl": sl, "created_at": get_bd_time_str()
+            "trade_usd": smart_size, "tp": tp, "sl": sl, "created_at": get_bd_time_str(),
+            "be_moved": False, "partial_done": False
         }
         execute_db_query("""
             INSERT INTO bot_trades (symbol, side, entry_price, status, take_profit, stop_loss, size, created_at)
             VALUES (%s, %s, %s, 'OPEN', %s, %s, %s, (NOW() AT TIME ZONE 'UTC' + INTERVAL '6 hours'));
         """, (str(symbol), str(side), float(price), float(tp), float(sl), float(smart_size)))
         self.cooldowns[symbol] = time.time()
-        send_telegram_alert(f"⚡ <b>TRADE EXECUTED ({side})</b>\n<b>Asset:</b> {ASSET_NAMES_EN.get(symbol, symbol)}\n<b>Entry:</b> ${price:,.2f} | <b>Size:</b> ${smart_size:,.2f}\n<b>TP:</b> ${tp:,.2f} | <b>SL:</b> ${sl:,.2f}")
+        self.compounder.record_compound_snapshot()
+        send_telegram_alert(f"⚡ <b>TRADE EXECUTED ({side})</b>\n<b>Asset:</b> {ASSET_NAMES_EN.get(symbol, symbol)}\n<b>Entry:</b> ${price:,.4f} | <b>Size:</b> ${smart_size:,.2f}\n<b>TP:</b> ${tp:,.4f} | <b>SL:</b> ${sl:,.4f}")
 
     def step_trailing_stop(self, symbol):
         if symbol not in self.open_trades:
@@ -1402,20 +1572,27 @@ class TradingBotEngine:
         entry_p, side, tp, sl = float(trade["entry_price"]), str(trade["side"]), float(trade["tp"]), float(trade["sl"])
         curr_p = float(curr_price)
         pnl_pct = ((curr_p - entry_p)/entry_p)*100 if side == "BUY" else ((entry_p - curr_p)/entry_p)*100
-        pnl_usd = round((pnl_pct / 100) * float(trade.get("trade_usd", 4.0)), 4)
+        pnl_usd = round((pnl_pct / 100) * float(trade.get("trade_usd", 5.0)), 4)
 
-        # 1. Step-by-step 0.3% profit lock
+        # 1. Break-Even Stop Loss at +0.5% profit ($0.00 Risk)
+        if pnl_pct >= 0.5 and not trade.get("be_moved"):
+            trade["sl"] = entry_p
+            trade["be_moved"] = True
+            logger.info(f"[BREAK-EVEN LOCKED] {symbol}: +{pnl_pct:.2f}% -> SL moved to Entry ${entry_p:,.4f} ($0.00 Risk)")
+
+        # 2. Step-by-step 0.3% profit lock
         self.step_trailing_stop(symbol)
 
-        # 2. 50% partial take profit
+        # 3. 50% partial take profit at 2.0% profit
         if pnl_pct >= PARTIAL_TRIGGER and not trade.get("partial_done"):
             partial_contracts = max(1, int(trade["size"] * PARTIAL_PCT))
-            place_order(symbol, "SELL" if side == "BUY" else "BUY", partial_contracts)
+            close_side = "SELL" if side == "BUY" else "BUY"
+            place_order(symbol, close_side, partial_contracts)
             trade["partial_done"] = True
             trade["size"] -= partial_contracts
-            logger.info(f"[PARTIAL TP] {symbol}: Closed {partial_contracts} contracts at {pnl_pct:.2f}% profit")
+            logger.info(f"[PARTIAL TP 50%] {symbol}: Closed {partial_contracts} contracts at +{pnl_pct:.2f}% profit")
 
-        # 3. Dynamic trailing stop
+        # 4. Dynamic trailing stop
         if pnl_pct >= TRAILING_TRIGGER:
             new_sl = round(curr_p * (1 - TRAILING_DISTANCE/100), 4) if side == "BUY" else round(curr_p * (1 + TRAILING_DISTANCE/100), 4)
             if (side == "BUY" and new_sl > trade["sl"]) or (side == "SELL" and new_sl < trade["sl"]):
@@ -1426,6 +1603,7 @@ class TradingBotEngine:
 
         if hit_tp or hit_sl:
             self.daily_pnl += pnl_usd
+            self.account_manager.update_account_stats(pnl_usd, is_win=hit_tp)
             reason = "TAKE_PROFIT_HIT" if hit_tp else ("PROFIT_LOCK_HIT" if pnl_usd > 0 else "STOP_LOSS_HIT")
             close_result = place_order(symbol, "SELL" if side == "BUY" else "BUY", trade["size"])
             if close_result is None:
@@ -1870,6 +2048,12 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             _next_tgt = 0.0
             _progress = 100.0
 
+        bal_val = float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0))
+        active_margin_val = round(sum(float(t.get("trade_usd", 5.0)) for t in bot_engine.open_trades.values()), 2)
+        max_margin_val = round(bal_val * MAX_MARGIN_ALLOC_PCT, 2)
+        safe_vault_val = round(bal_val * (1.0 - MAX_MARGIN_ALLOC_PCT), 2)
+        cmp_info = bot_engine.compounder.get_next_tier_info()
+
         response_data = {
             "status": "ONLINE",
             "env_mode": ENVIRONMENT_MODE,
@@ -1878,24 +2062,32 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             "data_source": bot_engine.cached_account_raw.get("data_source", "SIMULATED_FALLBACK"),
             "bangladesh_time": get_bd_time_str(),
             "gateio_account_raw": bot_engine.cached_account_raw,
-            "total_balance": float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)),
-            "wallet_balance": float(bot_engine.cached_account_raw.get("total", 1000.0)),
+            "total_balance": bal_val,
+            "wallet_balance": float(bot_engine.cached_account_raw.get("total", bal_val)),
             "unrealised_pnl": float(bot_engine.cached_account_raw.get("cross_unrealised_pnl", 0.0)),
             "maintenance_margin": float(bot_engine.cached_account_raw.get("maintenance_margin", 0.0)),
-            "safe_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.60, 2),
-            "trading_capital": round(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)) * 0.40, 2),
+            "safe_capital": safe_vault_val,
+            "trading_capital": max_margin_val,
+            "active_margin": active_margin_val,
+            "max_active_margin": max_margin_val,
+            "safe_vault_reserve": safe_vault_val,
             "daily_pnl": round(bot_engine.daily_pnl, 6),
             "daily_peak_pnl": round(bot_engine.daily_peak_pnl, 4),
             "daily_pnl_floor": round(bot_engine.daily_pnl_floor, 4),
             "next_target": _next_tgt,
             "target_progress": round(_progress, 1),
-            "compound_trade_size": get_compound_trade_size(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0))),
-            "compound_next_threshold": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[0],
-            "compound_next_size": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[1],
-            "compound_progress": get_compound_next_tier(float(bot_engine.cached_account_raw.get("cross_margin_balance", 1000.0)))[2],
+            "compound_trade_size": get_compound_trade_size(bal_val),
+            "compound_next_threshold": cmp_info.get("next_threshold", 0),
+            "compound_next_size": cmp_info.get("next_size", 0),
+            "compound_progress": cmp_info.get("progress", 0),
+            "compound_info": cmp_info,
+            "compound_history": bot_engine.compounder.get_compound_history(),
+            "accounts": bot_engine.account_manager.get_all_accounts(),
+            "current_account_id": bot_engine.account_manager.current_account_id,
+            "safe_recovery_mode": bot_engine.safe_recovery_mode,
             "daily_trade_count": bot_engine.daily_trade_count,
             "daily_target": USER_DAILY_TARGET,
-            "daily_loss_limit": USER_DAILY_LOSS_LIMIT,
+            "daily_loss_limit": bot_engine.daily_loss_limit,
             "trade_usd_size": bot_engine.trade_usd_size,
             "staircase_level": bot_engine.staircase_level,
             "safe_mode": bot_engine.safe_mode_active,
@@ -1937,6 +2129,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             secret = body.get('secret_key') or body.get('secret', '')
             passphrase = body.get('passphrase') or body.get('pass', '')
             resp = switch_environment(mode, key, secret, passphrase)
+        elif req_path == '/api/switch_account':
+            acc_id = body.get('account_id')
+            if acc_id:
+                switched = bot_engine.account_manager.switch_account(acc_id)
+                resp = {"success": switched, "current_account_id": bot_engine.account_manager.current_account_id}
+            else:
+                resp = {"success": False, "error": "No account_id provided"}
         elif req_path == '/api/close_trade':
             symbol = body.get('symbol')
             symbols = body.get('symbols', [])

@@ -540,17 +540,17 @@
                 </div>
                 <div style="margin-bottom: 10px;">
                     <label style="font-size: 0.75rem; color: var(--text-muted);">GATE.IO API KEY</label>
-                    <input type="text" id="keyApi" value="18879712da8a1ac20a45fe078226c651" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
+                    <input type="text" id="keyApi" placeholder="Paste your Gate.io API Key" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
                 </div>
                 <div style="margin-bottom: 10px;">
                     <label style="font-size: 0.75rem; color: var(--text-muted);">GATE.IO SECRET KEY</label>
-                    <input type="password" id="keySecret" value="17f3572ced13ca6e3a1803a706e60e3a2faad0b49d5da915b32886686be865ff" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
+                    <input type="password" id="keySecret" placeholder="Paste your Gate.io Secret Key" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
                 </div>
                 <div style="margin-bottom: 15px;">
-                    <label style="font-size: 0.75rem; color: var(--text-muted);">PASSPHRASE</label>
-                    <input type="text" id="keyPass" value="MyFund2024Secure" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
+                    <label style="font-size: 0.75rem; color: var(--text-muted);">PASSPHRASE (OPTIONAL)</label>
+                    <input type="password" id="keyPass" placeholder="Paste your Passphrase (if set)" style="width:100%; padding:8px; background:#090d16; border:1px solid #334155; color:#fff; border-radius:4px; margin-top:4px;">
                 </div>
-                <button type="submit" class="btn-update">⚡ APPLY REAL API KEYS TO GATE.IO</button>
+                <button type="submit" class="btn-update" style="background:linear-gradient(90deg,#0284c7,#2563eb);font-weight:bold;cursor:pointer;">⚡ APPLY & SWITCH ENVIRONMENT</button>
             </form>
         </div>
     </div>
@@ -1119,6 +1119,24 @@
         function renderTerminal(data) {
             if (!data) return;
 
+            const envBadge = document.getElementById('envBadge');
+            const isProd = (data.env_mode || '').toUpperCase() === 'PRODUCTION';
+            if (envBadge) {
+                if (isProd) {
+                    envBadge.innerHTML = '🔴 REAL MONEY PRODUCTION';
+                    envBadge.style.background = '#450a0a';
+                    envBadge.style.color = '#f87171';
+                    envBadge.style.borderColor = '#ef4444';
+                    envBadge.style.boxShadow = '0 0 10px rgba(239,68,68,0.5)';
+                } else {
+                    envBadge.innerHTML = '🟡 TESTNET MODE';
+                    envBadge.style.background = '#1e293b';
+                    envBadge.style.color = '#38bdf8';
+                    envBadge.style.borderColor = '#0284c7';
+                    envBadge.style.boxShadow = 'none';
+                }
+            }
+
             const keyNotice = document.getElementById('keyNotice');
             const liveBadge = document.getElementById('liveDataBadge');
             if (data.is_live_data === false || data.data_source === 'SIMULATED_FALLBACK') {
@@ -1130,12 +1148,18 @@
                     liveBadge.style.borderColor = '#dc2626';
                 }
             } else {
-                if (keyNotice) keyNotice.innerHTML = 'REAL-TIME MARKET DATA • RENDER BACKEND API CONNECTED';
+                if (keyNotice) {
+                    if (isProd) {
+                        keyNotice.innerHTML = '💰 <span style="color:#f87171;font-weight:bold;">REAL-MONEY PRODUCTION ACTIVE</span> • GATE.IO LIVE FUTURES CONNECTED';
+                    } else {
+                        keyNotice.innerHTML = 'REAL-TIME MARKET DATA • RENDER BACKEND API CONNECTED';
+                    }
+                }
                 if (liveBadge) {
-                    liveBadge.innerHTML = '🟢 LIVE GATE.IO DATA';
-                    liveBadge.style.background = '#052e16';
-                    liveBadge.style.color = '#4ade80';
-                    liveBadge.style.borderColor = '#166534';
+                    liveBadge.innerHTML = isProd ? '🔴 LIVE PRODUCTION API' : '🟢 LIVE GATE.IO DATA';
+                    liveBadge.style.background = isProd ? '#450a0a' : '#052e16';
+                    liveBadge.style.color = isProd ? '#f87171' : '#4ade80';
+                    liveBadge.style.borderColor = isProd ? '#ef4444' : '#166534';
                 }
             }
 
@@ -1223,10 +1247,6 @@
             const badge = document.getElementById('botToggleBadge');
             badge.innerText = isBotActive ? 'BOT AUTOPILOT: ON' : 'BOT AUTOPILOT: PAUSED';
             badge.className = 'pill-badge ' + (isBotActive ? '' : 'paused');
-
-            const envBadge = document.getElementById('envBadge');
-            envBadge.innerText = (data.env_mode || 'TESTNET') + ' MODE';
-            envBadge.className = 'mode-badge ' + (data.env_mode === 'PRODUCTION' ? 'prod' : '');
 
             // Real backend account equity directly from Gate.io
             const raw = data.gateio_account_raw || {};
@@ -2196,15 +2216,32 @@
 
         async function saveApiKeys(e) {
             e.preventDefault();
+            const mode = document.getElementById('keyMode').value;
             const body = {
-                env_mode: document.getElementById('keyMode').value,
+                env_mode: mode,
                 api_key: document.getElementById('keyApi').value,
                 secret_key: document.getElementById('keySecret').value,
                 passphrase: document.getElementById('keyPass').value
             };
-            await fetch(RENDER_BACKEND_URL + '/api/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            closeKeysModal();
-            fetchTerminalData();
+            showNotification(`⏳ Connecting to Gate.io ${mode}...`, 'blue');
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/keys';
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.success) {
+                    if (mode === 'PRODUCTION') {
+                        showNotification(`🔴 REAL-MONEY PRODUCTION ACTIVATED! Live Balance: $${parseFloat(data.total_balance||0).toFixed(2)} USDT`, 'green');
+                    } else {
+                        showNotification(`🟡 Switched to TESTNET MODE!`, 'blue');
+                    }
+                    closeKeysModal();
+                    fetchTerminalData();
+                } else {
+                    showNotification(`❌ Mode switch error: ${data.error || 'Failed'}`, 'red');
+                }
+            } catch(err) {
+                showNotification(`❌ Network error: ${err.message}`, 'red');
+            }
         }
 
         function onAssetChange(val) {

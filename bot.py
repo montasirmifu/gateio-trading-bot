@@ -925,7 +925,8 @@ class TradingBotEngine:
 
     def refresh_live_cache(self):
         """Refreshes live Gate.io data cache. Parses all account and position fields."""
-        link_base = "https://testnet.gate.com/futures/USDT/{sym}?fromlink=www.gate.com&uid=59787607"
+        is_prod = ENVIRONMENT_MODE == "PRODUCTION"
+        link_base = "https://www.gate.com/futures/USDT/{sym}?fromlink=www.gate.com" if is_prod else "https://testnet.gate.com/futures/USDT/{sym}?fromlink=www.gate.com&uid=59787607"
         try:
             acc = gate_api_request("GET", "/futures/usdt/accounts")
             if acc and isinstance(acc, dict) and "total" in acc:
@@ -1339,6 +1340,46 @@ class TradingBotEngine:
 bot_engine = TradingBotEngine()
 
 # ============================================
+# DYNAMIC TESTNET / PRODUCTION SWITCH ENGINE
+# ============================================
+def switch_environment(mode, new_api_key=None, new_secret_key=None, new_passphrase=None):
+    global ENVIRONMENT_MODE, BASE_URL, API_KEY, SECRET_KEY, PASSPHRASE, GATEIO_KEY_VALID
+    mode_upper = (mode or "").strip().upper()
+    if mode_upper in ["PRODUCTION", "LIVE", "REAL"]:
+        ENVIRONMENT_MODE = "PRODUCTION"
+        BASE_URL = "https://api.gateio.ws"
+    else:
+        ENVIRONMENT_MODE = "TESTNET"
+        BASE_URL = "https://api-testnet.gateapi.io"
+
+    if new_api_key and str(new_api_key).strip():
+        API_KEY = str(new_api_key).strip()
+    if new_secret_key and str(new_secret_key).strip():
+        SECRET_KEY = str(new_secret_key).strip()
+    if new_passphrase and str(new_passphrase).strip():
+        PASSPHRASE = str(new_passphrase).strip()
+
+    logger.info("=" * 65)
+    logger.info(f" [ENVIRONMENT SWITCH] Active Mode: {ENVIRONMENT_MODE} | Base URL: {BASE_URL}")
+    logger.info("=" * 65)
+
+    bot_engine.refresh_live_cache()
+
+    if ENVIRONMENT_MODE == "PRODUCTION":
+        alert_msg = f"🔴 <b>REAL-MONEY PRODUCTION MODE ACTIVATED!</b>\nConnected to Gate.io Live API.\nTotal Balance: ${bot_engine.total_balance:.2f} USDT"
+    else:
+        alert_msg = f"🟡 <b>TESTNET MODE ACTIVATED</b>\nConnected to Gate.io Testnet.\nBalance: ${bot_engine.total_balance:.2f} USDT"
+    send_telegram_alert(alert_msg)
+
+    return {
+        "success": True,
+        "env_mode": ENVIRONMENT_MODE,
+        "base_url": BASE_URL,
+        "is_live_data": bot_engine.is_live_data,
+        "total_balance": bot_engine.total_balance
+    }
+
+# ============================================
 # EMBEDDED HTML/CSS/JS DASHBOARD (v3.1)
 # With clear visual indicators for Live vs Fallback data
 # ============================================
@@ -1642,6 +1683,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
         response_data = {
             "status": "ONLINE",
+            "env_mode": ENVIRONMENT_MODE,
+            "base_url": BASE_URL,
             "is_live_data": bot_engine.is_live_data,
             "data_source": bot_engine.cached_account_raw.get("data_source", "SIMULATED_FALLBACK"),
             "bangladesh_time": get_bd_time_str(),
@@ -1699,7 +1742,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         except Exception:
             body = {}
 
-        if req_path == '/api/close_trade':
+        if req_path in ['/api/keys', '/api/mode', '/api/settings']:
+            mode = body.get('env_mode') or body.get('mode', 'TESTNET')
+            key = body.get('api_key') or body.get('key', '')
+            secret = body.get('secret_key') or body.get('secret', '')
+            passphrase = body.get('passphrase') or body.get('pass', '')
+            resp = switch_environment(mode, key, secret, passphrase)
+        elif req_path == '/api/close_trade':
             symbol = body.get('symbol')
             symbols = body.get('symbols', [])
             if symbol:

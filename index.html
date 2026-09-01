@@ -377,11 +377,11 @@
                 <span style="background:#052e16; color:#4ade80; border:1px solid #16a34a; font-size:0.65rem; padding:2px 6px; border-radius:4px;" id="botActivePill">AUTOPILOT ON</span>
             </div>
 
-            <!-- FIXED $4 LOCKED DISPLAY -->
+            <!-- COMPOUND LOCKED DISPLAY -->
             <div style="background: linear-gradient(135deg, #052e16, #0a3d1e); border: 1px solid #16a34a; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
                 <div style="font-size: 1.5rem;">🔒</div>
                 <div style="flex: 1;">
-                    <div style="color: #4ade80; font-weight: bold; font-size: 0.9rem;">FIXED $4.00 USD / TRADE (LOCKED)</div>
+                    <div style="color: #4ade80; font-weight: bold; font-size: 0.9rem;" id="botEngineTradeSizeText">COMPOUND $4.00 USD / TRADE (LOCKED)</div>
                     <div style="color: #86efac; font-size: 0.68rem; margin-top: 2px;">Daily Stop-Loss: -$4.00 | Staircase: $5→$6→$7→$8+ (Unlimited Safe Mode)</div>
                 </div>
                 <div style="background: #1e293b; color: #94a3b8; padding: 4px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: bold; white-space: nowrap;">RISK MANAGED</div>
@@ -508,6 +508,7 @@
                 <button class="tab-btn" id="tabReportBtn" onclick="switchMainRightTab('report')">📅 MONTHLY REPORT</button>
                 <button class="tab-btn" id="tabDbBtn" onclick="switchMainRightTab('db')">🗄️ LIVE DB LOGS</button>
                 <button class="tab-btn" id="tabNewsBtn" onclick="switchMainRightTab('news')">🌐 AI NEWS</button>
+                <button class="tab-btn" onclick="switchMainRightTab('manual')" id="tabManual">🛠️ MANUAL</button>
             </div>
 
             <div class="sub-filter-row" id="subFilterRow">
@@ -1273,8 +1274,11 @@
             const pnlSign = realDailyPnl >= 0 ? '+$' : '-$';
             document.getElementById('dailyPnL').innerText = pnlSign + Math.abs(realDailyPnl).toFixed(4);
             document.getElementById('dailyPnL').style.color = realDailyPnl >= 0 ? 'var(--green)' : 'var(--red)';
-            document.getElementById('tradeSizeSub').innerText = `$${currentTradeSize.toFixed(2)} USD (FIXED)` +
+            document.getElementById('tradeSizeSub').innerText = `$${currentTradeSize.toFixed(2)} USD (COMPOUND)` +
                 (data.safe_mode ? ' [SAFE MODE]' : '');
+            if (document.getElementById('botEngineTradeSizeText')) {
+                document.getElementById('botEngineTradeSizeText').innerText = `COMPOUND $${currentTradeSize.toFixed(2)} USD / TRADE (LOCKED)`;
+            }
 
             // Update Bot Engine Status card (TODAY'S SCORE ONLY)
             const winCount  = todayClosedTrades.filter(t => (parseFloat(t.pnl) || 0) > 0).length;
@@ -1995,6 +1999,72 @@
                         </table>
                     </div>
                 `;
+            } else if (activeMainRightTab === 'manual') {
+                document.getElementById('subFilterRow').style.display = 'none';
+                const openTrades = (data.open_trades || []).filter(t => t && t.symbol);
+                const compSize = parseFloat(data.compound_trade_size || data.trade_usd_size || 5);
+                const compNext = parseFloat(data.compound_next_threshold || 250);
+                const compNextSize = parseFloat(data.compound_next_size || 10);
+                const compProg = parseFloat(data.compound_progress || 0);
+                const dailyCount = parseInt(data.daily_trade_count || 0);
+                const bal = parseFloat(data.total_balance || 1000);
+
+                let html = `
+                <div style="background:#0d1829;border:1px solid #1e3a5f;border-radius:6px;padding:10px;margin-bottom:8px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.72rem">
+                        <div>💰 <b>Balance:</b> <span style="color:#00f2fe">$${bal.toFixed(2)}</span></div>
+                        <div>📦 <b>Trade Size:</b> <span style="color:#4ade80">$${compSize.toFixed(2)}</span></div>
+                        <div>🎯 <b>Next Level:</b> <span style="color:#fbbf24">$${compNextSize.toFixed(0)} at $${compNext.toFixed(0)}</span></div>
+                        <div>📊 <b>Today's Trades:</b> <span style="color:#00f2fe">${dailyCount}</span></div>
+                    </div>
+                    <div style="margin-top:6px;height:5px;background:#1a0000;border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:${compProg}%;background:linear-gradient(90deg,#00e676,#00f2fe);border-radius:3px;transition:width 0.3s"></div>
+                    </div>
+                    <div style="text-align:right;font-size:.6rem;color:#64748b;margin-top:2px">${compProg.toFixed(0)}% to next tier</div>
+                </div>
+
+                <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:.72rem;color:#94a3b8;cursor:pointer">
+                        <input type="checkbox" onchange="toggleSelectAll(this)" style="accent-color:#00f2fe"> SELECT ALL
+                    </label>
+                    <button onclick="closeSelectedTrades()" style="background:#451a03;color:#f97316;border:1px solid #f97316;padding:4px 10px;border-radius:4px;font-size:.7rem;font-weight:bold;cursor:pointer">🚨 CLOSE SELECTED</button>
+                    <button onclick="closeAllTrades()" style="background:#450a0a;color:#f87171;border:1px solid #dc2626;padding:4px 10px;border-radius:4px;font-size:.7rem;font-weight:bold;cursor:pointer">🔥 CLOSE ALL</button>
+                </div>`;
+
+                if (openTrades.length === 0) {
+                    html += `<div style="text-align:center;color:#64748b;padding:30px;font-size:.8rem">No open positions</div>`;
+                } else {
+                    for (const t of openTrades) {
+                        const ep = parseFloat(t.entry_price || 0);
+                        const mp = parseFloat(t.mark_price || t.entry_price || 0);
+                        const pnl = parseFloat(t.pnl || 0);
+                        const pnlPct = ep > 0 ? ((t.side === 'BUY' ? (mp - ep) : (ep - mp)) / ep * 100) : 0;
+                        const pnlColor = pnl >= 0 ? '#4ade80' : '#f87171';
+                        const tp = parseFloat(t.tp || 0);
+                        const sl = parseFloat(t.sl || 0);
+                        html += `
+                        <div style="background:#0c1424;border:1px solid ${pnl>=0?'#16a34a':'#dc2626'};border-radius:6px;padding:10px;margin-bottom:6px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <input type="checkbox" class="trade-checkbox" data-symbol="${t.symbol}" style="accent-color:#00f2fe">
+                                <span style="font-weight:bold;color:#fff;font-size:.8rem">${t.side === 'BUY' ? '🟢' : '🔴'} ${t.symbol_en || t.symbol}</span>
+                                <span style="margin-left:auto;background:${t.side==='BUY'?'#052e16':'#450a0a'};color:${t.side==='BUY'?'#4ade80':'#f87171'};padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:bold">${t.side}</span>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:.68rem;color:#94a3b8">
+                                <div>Entry: <b style="color:#fff">$${ep.toFixed(2)}</b></div>
+                                <div>Current: <b style="color:#00f2fe">$${mp.toFixed(2)}</b></div>
+                                <div>PnL: <b style="color:${pnlColor}">${pnl>=0?'+':''}$${pnl.toFixed(4)}</b></div>
+                                <div>PnL%: <b style="color:${pnlColor}">${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%</b></div>
+                                <div>TP: <b style="color:#4ade80">$${tp.toFixed(2)}</b></div>
+                                <div>SL: <b style="color:#f87171">$${sl.toFixed(2)}</b></div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+                                <span style="font-size:.6rem;color:#64748b">${t.created_at || 'N/A'}</span>
+                                <button onclick="closeTrade('${t.symbol}')" style="background:#450a0a;color:#f87171;border:1px solid #dc2626;padding:4px 12px;border-radius:4px;font-size:.68rem;font-weight:bold;cursor:pointer">🔴 CLOSE</button>
+                            </div>
+                        </div>`;
+                    }
+                }
+                feed.innerHTML = html;
             }
             if (feed && prevScrollTop > 0) feed.scrollTop = prevScrollTop;
         }
@@ -2020,6 +2090,7 @@
             if (tabName === 'report' && document.getElementById('tabReportBtn')) document.getElementById('tabReportBtn').classList.add('active');
             if (tabName === 'db' && document.getElementById('tabDbBtn')) document.getElementById('tabDbBtn').classList.add('active');
             if (tabName === 'news' && document.getElementById('tabNewsBtn')) document.getElementById('tabNewsBtn').classList.add('active');
+            if (tabName === 'manual' && document.getElementById('tabManual')) document.getElementById('tabManual').classList.add('active');
             
             if (lastReceivedTerminalData) renderRightFeed(lastReceivedTerminalData);
             fetchTerminalData();
@@ -2357,6 +2428,83 @@
             fetchTerminalData();
             setInterval(fetchTerminalData, 500);
         };
+        // Manual trade close functions
+        async function closeTrade(symbol) {
+            if (!confirm(`Close ${symbol} position?`)) return;
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({symbol: symbol})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showNotification(`✅ Closed ${symbol} | PnL: $${data.closed[0].pnl}`, data.closed[0].pnl >= 0 ? 'green' : 'red');
+                } else {
+                    showNotification(`❌ Failed to close ${symbol}: ${data.error || 'Unknown error'}`, 'red');
+                }
+            } catch(e) {
+                showNotification(`❌ Error closing ${symbol}: ${e.message}`, 'red');
+            }
+        }
+
+        async function closeSelectedTrades() {
+            const checkboxes = document.querySelectorAll('.trade-checkbox:checked');
+            if (checkboxes.length === 0) { alert('No trades selected'); return; }
+            const symbols = Array.from(checkboxes).map(cb => cb.dataset.symbol);
+            if (!confirm(`Close ${symbols.length} trade(s)?\n${symbols.join(', ')}`)) return;
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({symbols: symbols})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const totalPnl = data.closed.reduce((sum, c) => sum + (c.pnl || 0), 0);
+                    showNotification(`✅ Closed ${symbols.length} trades | Total PnL: $${totalPnl.toFixed(2)}`, totalPnl >= 0 ? 'green' : 'red');
+                }
+            } catch(e) {
+                showNotification(`❌ Error: ${e.message}`, 'red');
+            }
+        }
+
+        async function closeAllTrades() {
+            const openTrades = lastReceivedTerminalData?.open_trades || [];
+            if (openTrades.length === 0) { alert('No open trades'); return; }
+            const symbols = openTrades.map(t => t.symbol);
+            if (!confirm(`⚠️ Close ALL ${symbols.length} open trades?\n${symbols.join(', ')}`)) return;
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({symbols: symbols})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const totalPnl = data.closed.reduce((sum, c) => sum + (c.pnl || 0), 0);
+                    showNotification(`✅ ALL trades closed | Total PnL: $${totalPnl.toFixed(2)}`, totalPnl >= 0 ? 'green' : 'red');
+                }
+            } catch(e) {
+                showNotification(`❌ Error: ${e.message}`, 'red');
+            }
+        }
+
+        function toggleSelectAll(el) {
+            const checkboxes = document.querySelectorAll('.trade-checkbox');
+            checkboxes.forEach(cb => cb.checked = el.checked);
+        }
+
+        function showNotification(msg, color) {
+            const div = document.createElement('div');
+            div.style.cssText = `position:fixed;top:20px;right:20px;z-index:999999;padding:12px 20px;border-radius:8px;font-weight:bold;font-size:0.85rem;color:#fff;background:${color==='green'?'#052e16':'#450a0a'};border:1px solid ${color==='green'?'#16a34a':'#dc2626'};box-shadow:0 4px 12px rgba(0,0,0,0.5);animation:fadeIn 0.3s`;
+            div.innerText = msg;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 4000);
+        }
     </script>
 </body>
 </html>

@@ -102,8 +102,6 @@
         .trade-card.border-red    { border-left: 4px solid var(--red); }
         .trade-card.border-yellow { border-left: 4px solid var(--yellow); }
 
-        .trade-card.border-red { border-left: 4px solid var(--red); }
-
         .tc-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px; }
         .tc-title { color: #fff; font-size: 0.85rem; }
         .tc-status { font-size: 0.7rem; padding: 2px 6px; border-radius: 3px; }
@@ -218,6 +216,14 @@
             .trade-card { padding: 12px !important; margin-bottom: 6px !important; }
         }
         .chart-tooltip { position: absolute; pointer-events: none; z-index: 100; background: #0c1019; border: 1px solid #0284c7; padding: 6px 10px; border-radius: 4px; font-size: 0.72rem; color: #fff; display: none; }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes toastSlideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -235,13 +241,44 @@
 
         <div class="header-controls">
             <select class="asset-select" id="assetSelector" onchange="onAssetChange(this.value)">
-                <option value="XAU_USDT">XAU_USDT (Gold)</option>
-                <option value="WTI_USDT">WTI_USDT (Crude Oil)</option>
-                <option value="BTC_USDT">BTC_USDT (Bitcoin)</option>
-                <option value="ETH_USDT" selected>ETH_USDT (Ethereum)</option>
-                <option value="US100_USDT">US100_USDT (Nasdaq 100)</option>
-                <option value="AAPL_USDT">AAPL_USDT (Apple Inc)</option>
-                <option value="NVDA_USDT">NVDA_USDT (Nvidia Corp)</option>
+                <optgroup label="🔵 LARGE CAP">
+                    <option value="BTC_USDT">BTC_USDT (Bitcoin)</option>
+                    <option value="ETH_USDT" selected>ETH_USDT (Ethereum)</option>
+                    <option value="BNB_USDT">BNB_USDT (BNB)</option>
+                </optgroup>
+                <optgroup label="🟢 MID CAP">
+                    <option value="SOL_USDT">SOL_USDT (Solana)</option>
+                    <option value="XRP_USDT">XRP_USDT (Ripple)</option>
+                    <option value="ADA_USDT">ADA_USDT (Cardano)</option>
+                    <option value="LINK_USDT">LINK_USDT (Chainlink)</option>
+                    <option value="AVAX_USDT">AVAX_USDT (Avalanche)</option>
+                    <option value="DOT_USDT">DOT_USDT (Polkadot)</option>
+                    <option value="NEAR_USDT">NEAR_USDT (NEAR)</option>
+                    <option value="APT_USDT">APT_USDT (Aptos)</option>
+                    <option value="SUI_USDT">SUI_USDT (Sui)</option>
+                    <option value="ARB_USDT">ARB_USDT (Arbitrum)</option>
+                    <option value="OP_USDT">OP_USDT (Optimism)</option>
+                    <option value="INJ_USDT">INJ_USDT (Injective)</option>
+                    <option value="TIA_USDT">TIA_USDT (Celestia)</option>
+                    <option value="FET_USDT">FET_USDT (Fetch.ai)</option>
+                    <option value="RNDR_USDT">RNDR_USDT (Render)</option>
+                    <option value="ATOM_USDT">ATOM_USDT (Cosmos)</option>
+                    <option value="FIL_USDT">FIL_USDT (Filecoin)</option>
+                    <option value="LTC_USDT">LTC_USDT (Litecoin)</option>
+                </optgroup>
+                <optgroup label="🟡 MEME CAP">
+                    <option value="DOGE_USDT">DOGE_USDT (Dogecoin)</option>
+                    <option value="PEPE_USDT">PEPE_USDT (PEPE)</option>
+                    <option value="SHIB_USDT">SHIB_USDT (Shiba Inu)</option>
+                    <option value="FLOKI_USDT">FLOKI_USDT (Floki)</option>
+                    <option value="WIF_USDT">WIF_USDT (dogwifhat)</option>
+                    <option value="BONK_USDT">BONK_USDT (Bonk)</option>
+                    <option value="TURBO_USDT">TURBO_USDT (Turbo)</option>
+                    <option value="1000SATS_USDT">1000SATS_USDT</option>
+                </optgroup>
+                <optgroup label="🥇 COMMODITY">
+                    <option value="XAU_USDT">XAU_USDT (Gold)</option>
+                </optgroup>
             </select>
             <span class="pill-badge" id="botToggleBadge" onclick="toggleBotPilot()">BOT AUTOPILOT: ON</span>
             <button class="btn-panic" onclick="triggerEmergencyPanic()">🚨 EMERGENCY PANIC</button>
@@ -414,7 +451,7 @@
                 </div>
                 <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
                     <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">ENVIRONMENT</div>
-                    <div style="color:var(--yellow); font-weight:bold; margin-top:1px;">TESTNET MODE</div>
+                    <div id="botStatusEnvMode" style="color:var(--yellow); font-weight:bold; margin-top:1px;">TESTNET MODE</div>
                 </div>
                 <div style="background:#090d16; border:1px solid #1e293b; border-radius:5px; padding:6px 8px;">
                     <div style="color:var(--text-muted); font-size:0.65rem; font-weight:bold;">TODAY'S SCORE</div>
@@ -690,13 +727,40 @@
         window._openTradeEntry = 2443.4375;  // ETH avg entry price — updated from live positions
 
         const tvSymbolMap = {
-            'ETH_USDT': 'BINANCE:ETHUSDT',
+            // LARGE CAP
             'BTC_USDT': 'BINANCE:BTCUSDT',
-            'XAU_USDT': 'OANDA:XAUUSD',
-            'WTI_USDT': 'TVC:USOIL',
-            'US100_USDT': 'PEPPERSTONE:NAS100',
-            'AAPL_USDT': 'NASDAQ:AAPL',
-            'NVDA_USDT': 'NASDAQ:NVDA'
+            'ETH_USDT': 'BINANCE:ETHUSDT',
+            'BNB_USDT': 'BINANCE:BNBUSDT',
+            // MID CAP
+            'SOL_USDT': 'BINANCE:SOLUSDT',
+            'XRP_USDT': 'BINANCE:XRPUSDT',
+            'ADA_USDT': 'BINANCE:ADAUSDT',
+            'LINK_USDT': 'BINANCE:LINKUSDT',
+            'AVAX_USDT': 'BINANCE:AVAXUSDT',
+            'DOT_USDT': 'BINANCE:DOTUSDT',
+            'NEAR_USDT': 'BINANCE:NEARUSDT',
+            'APT_USDT': 'BINANCE:APTUSDT',
+            'SUI_USDT': 'BINANCE:SUIUSDT',
+            'ARB_USDT': 'BINANCE:ARBUSDT',
+            'OP_USDT': 'BINANCE:OPUSDT',
+            'INJ_USDT': 'BINANCE:INJUSDT',
+            'TIA_USDT': 'BINANCE:TIAUSDT',
+            'FET_USDT': 'BINANCE:FETUSDT',
+            'RNDR_USDT': 'BINANCE:RNDRUSDT',
+            'ATOM_USDT': 'BINANCE:ATOMUSDT',
+            'FIL_USDT': 'BINANCE:FILUSDT',
+            'LTC_USDT': 'BINANCE:LTCUSDT',
+            // MEME CAP
+            'DOGE_USDT': 'BINANCE:DOGEUSDT',
+            'PEPE_USDT': 'BINANCE:PEPEUSDT',
+            'SHIB_USDT': 'BINANCE:SHIBUSDT',
+            'FLOKI_USDT': 'BINANCE:FLOKIUSDT',
+            'WIF_USDT': 'BINANCE:WIFUSDT',
+            'BONK_USDT': 'BINANCE:BONKUSDT',
+            'TURBO_USDT': 'BINANCE:TURBOUSDT',
+            '1000SATS_USDT': 'BINANCE:1000SATSUSDT',
+            // COMMODITY
+            'XAU_USDT': 'OANDA:XAUUSD'
         };
 
         function initTradingViewChart(symbol) {
@@ -908,11 +972,6 @@
             document.getElementById('chartTooltip').style.display = 'none';
         }
 
-        setInterval(() => {
-            countdownVal -= 0.1;
-            if (countdownVal <= 0) countdownVal = 1.0;
-            document.getElementById('evalCountdown').innerText = countdownVal.toFixed(1) + 's';
-        }, 100);
 
         // ============================================================
         // LIVE REAL-TIME DATA ENGINE — GATE.IO DIRECT + RENDER PROXY
@@ -963,32 +1022,41 @@
                 // Tickers only update market prices, never overwrite real backend balance
 
 
-                // Always update asset prices from live tickers
-                const ASSET_DEFAULTS = {
-                    "ETH_USDT":   {rsi_1m:68.8, macd_1m:1.20,  signal_1m:0.74,  vol_ratio:0.55, ema200_15m:2433,  ema200_1h:2433,  sentiment:"POSITIVE"},
-                    "BTC_USDT":   {rsi_1m:63.8, macd_1m:22.60, signal_1m:22.79, vol_ratio:0.80, ema200_15m:77000, ema200_1h:77000, sentiment:"POSITIVE"},
-                    "XAU_USDT":   {rsi_1m:55.0, macd_1m:0.06,  signal_1m:0.04,  vol_ratio:0.12, ema200_15m:4460,  ema200_1h:4460,  sentiment:"POSITIVE"},
-                    "WTI_USDT":   {rsi_1m:52.5, macd_1m:-0.15, signal_1m:-0.22, vol_ratio:0.69, ema200_15m:72,    ema200_1h:72,    sentiment:"NEGATIVE"},
-                    "US100_USDT": {rsi_1m:63.3, macd_1m:8.01,  signal_1m:0.31,  vol_ratio:1.27, ema200_15m:19000, ema200_1h:19000, sentiment:"NEUTRAL"},
-                    "AAPL_USDT":  {rsi_1m:65.0, macd_1m:0.62,  signal_1m:0.57,  vol_ratio:0.87, ema200_15m:220,   ema200_1h:220,   sentiment:"POSITIVE"},
-                    "NVDA_USDT":  {rsi_1m:72.8, macd_1m:0.19,  signal_1m:0.16,  vol_ratio:0.80, ema200_15m:125,   ema200_1h:125,   sentiment:"POSITIVE"},
-                };
+                // Build asset snapshots from LIVE data only (zero hardcoded defaults)
                 latestAssetSnapshot = {};
-                for (const [sym, def] of Object.entries(ASSET_DEFAULTS)) {
-                    const liveP = liveTickerMap[sym] ? parseFloat(liveTickerMap[sym].last) : (latestAssetSnapshot[sym] ? latestAssetSnapshot[sym].price : def.ema200_15m);
-                    const backendSnap = (lastReceivedTerminalData && lastReceivedTerminalData.assets && lastReceivedTerminalData.assets[sym]) || {};
+                const backendAssets = (lastReceivedTerminalData && lastReceivedTerminalData.assets) || {};
+                
+                // Merge backend snapshots + live ticker prices
+                for (const sym of Object.keys(backendAssets)) {
+                    const backendSnap = backendAssets[sym] || {};
+                    const liveP = liveTickerMap[sym] ? parseFloat(liveTickerMap[sym].last) : (backendSnap.price || 0);
                     latestAssetSnapshot[sym] = {
-                        price: liveP,
-                        rsi_1m: backendSnap.rsi_1m || def.rsi_1m,
-                        macd_1m: backendSnap.macd_1m || def.macd_1m,
-                        signal_1m: backendSnap.signal_1m || def.signal_1m,
-                        vol_ratio: backendSnap.vol_ratio || def.vol_ratio,
-                        ema200_15m: backendSnap.ema200_15m || def.ema200_15m,
-                        ema200_1h: backendSnap.ema200_1h || def.ema200_1h,
-                        sentiment: backendSnap.sentiment || def.sentiment,
-                        matched_badges: backendSnap.matched_badges || 4,
-                        updated_at: new Date().toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka'})
+                        price: liveP > 0 ? liveP : (backendSnap.price || 0),
+                        rsi_1m: backendSnap.rsi_1m || 50,
+                        macd_1m: backendSnap.macd_1m || 0,
+                        signal_1m: backendSnap.signal_1m || 0,
+                        vol_ratio: backendSnap.vol_ratio || 1.0,
+                        ema200_15m: backendSnap.ema200_15m || 0,
+                        ema200_1h: backendSnap.ema200_1h || 0,
+                        sentiment: backendSnap.sentiment || '—',
+                        matched_badges: backendSnap.matched_badges || 0,
+                        buy_badges: backendSnap.buy_badges || 0,
+                        sell_badges: backendSnap.sell_badges || 0,
+                        updated_at: backendSnap.updated_at || new Date().toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka'})
                     };
+                }
+                
+                // Also add any ticker symbols not yet in backend
+                for (const [sym, tick] of Object.entries(liveTickerMap)) {
+                    if (!latestAssetSnapshot[sym] && sym.endsWith('_USDT')) {
+                        latestAssetSnapshot[sym] = {
+                            price: parseFloat(tick.last || 0),
+                            rsi_1m: 50, macd_1m: 0, signal_1m: 0,
+                            vol_ratio: 1.0, ema200_15m: 0, ema200_1h: 0,
+                            sentiment: '—', matched_badges: 0,
+                            updated_at: new Date().toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka'})
+                        };
+                    }
                 }
             } catch(e) {}
         }
@@ -1107,6 +1175,7 @@
                 if (data.api_logs) latestGateIoApiLogs = data.api_logs;
 
                 lastReceivedTerminalData = data;
+                latestGateIoAccountData = data.gateio_account_raw || null;
                 renderTerminal(data);
 
             } catch (e) {
@@ -1135,6 +1204,12 @@
                     envBadge.style.borderColor = '#0284c7';
                     envBadge.style.boxShadow = 'none';
                 }
+            }
+
+            const botStatusEnv = document.getElementById('botStatusEnvMode');
+            if (botStatusEnv) {
+                botStatusEnv.innerText = isProd ? 'PRODUCTION MODE' : 'TESTNET MODE';
+                botStatusEnv.style.color = isProd ? 'var(--red)' : 'var(--yellow)';
             }
 
             const keyNotice = document.getElementById('keyNotice');
@@ -2056,7 +2131,8 @@
                 } else {
                     for (const t of openTrades) {
                         const ep = parseFloat(t.entry_price || 0);
-                        const mp = parseFloat(t.mark_price || t.entry_price || 0);
+                        const tickerP = liveTickerMap[t.symbol] ? parseFloat(liveTickerMap[t.symbol].last) : 0;
+                        const mp = tickerP > 0 ? tickerP : parseFloat(t.mark_price || t.entry_price || 0);
                         const pnl = parseFloat(t.pnl || 0);
                         const pnlPct = ep > 0 ? ((t.side === 'BUY' ? (mp - ep) : (ep - mp)) / ep * 100) : 0;
                         const isProf = pnl >= 0;
@@ -2324,10 +2400,24 @@
         }
 
         async function triggerEmergencyPanic() {
-            if (confirm("⚠️ EMERGENCY PANIC: Are you sure you want to CLOSE ALL active positions immediately?")) {
-                await fetch(RENDER_BACKEND_URL + '/api/panic', { method: 'POST' });
-                alert("🚨 ALL POSITIONS CLOSED IMMEDIATELY.");
+            showNotification('🚨 EMERGENCY PANIC: Closing ALL positions...', 'red');
+            try {
+                const url = (window.location.origin && window.location.origin.startsWith('http') ? window.location.origin : RENDER_BACKEND_URL) + '/api/close_trade';
+                const allSymbols = globalTradesCache.filter(t => t.status === 'OPEN').map(t => t.symbol);
+                if (allSymbols.length === 0) {
+                    showNotification('⚠️ No open positions to close', 'amber');
+                    return;
+                }
+                const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({symbols: allSymbols}) });
+                const data = await res.json();
+                if (data.success) {
+                    showNotification('✅ ALL positions closed successfully!', 'green');
+                } else {
+                    showNotification('❌ Some positions failed to close', 'red');
+                }
                 fetchTerminalData();
+            } catch(err) {
+                showNotification('❌ Panic close failed: ' + err.message, 'red');
             }
         }
 
@@ -2389,20 +2479,21 @@
             const streamElem = document.getElementById('modalApiLogStream');
             if (jsonElem) {
                 const samplePayload = latestGateIoAccountData || {
-                    "user": "59787607",
+                    "user": "—",
                     "currency": "USDT",
-                    "total": "1000.0000000000000000",
-                    "available": "1000.0000000000000000",
-                    "position_margin": "0.0000000000000000",
-                    "order_margin": "0.0000000000000000",
-                    "unrealised_pnl": "0.0000000000000000"
+                    "total": "0.00",
+                    "available": "0.00",
+                    "position_margin": "0.00",
+                    "order_margin": "0.00",
+                    "unrealised_pnl": "0.00",
+                    "status": "Connecting to Gate.io API..."
                 };
                 jsonElem.innerText = JSON.stringify(samplePayload, null, 2);
                 if (samplePayload.total) {
                     const tot = parseFloat(samplePayload.total);
                     document.getElementById('modalTotVal').innerText = '$' + tot.toFixed(2) + ' USDT';
-                    document.getElementById('modalAvailVal').innerText = '$' + (tot * 0.40).toFixed(2) + ' USDT';
-                    document.getElementById('modalSafeVal').innerText = '$' + (tot * 0.60).toFixed(2) + ' USDT';
+                    document.getElementById('modalAvailVal').innerText = '$' + (tot > 0 ? (tot * 0.40).toFixed(2) : '0.00') + ' USDT';
+                    document.getElementById('modalSafeVal').innerText = '$' + (tot > 0 ? (tot * 0.60).toFixed(2) : '0.00') + ' USDT';
                 }
             }
 
@@ -2438,42 +2529,15 @@
             if (elem) elem.innerText = scanCountdownVal.toFixed(1) + 's';
         }, 100);
 
-        function syncLiveGateIoAccountAssets(data) {
-            // DEPRECATED: Not in use. return;
-            return;
-            if (!data || !data.gateio_account_raw) return;
-            const raw = data.gateio_account_raw;
-            const marginBal = parseFloat(raw.cross_margin_balance || raw.total || 1000.34);
-            const walletBal = parseFloat(raw.total || 999.95);
-            const unPnl = parseFloat(raw.cross_unrealised_pnl || 0.39);
-            const mmVal = parseFloat(raw.maintenance_margin || 0.47);
-
-            if (document.getElementById('gateMarginBalance')) {
-                document.getElementById('gateMarginBalance').innerText = marginBal.toFixed(2) + ' USDT';
-                document.getElementById('gateAccountAssets').innerText = marginBal.toFixed(2) + ' USDT';
-                document.getElementById('gateWalletAssets').innerText = walletBal.toFixed(2) + ' USDT';
-                
-                const pnlSign = unPnl >= 0 ? '+' : '';
-                document.getElementById('gateUnrealizedPnl').innerText = pnlSign + unPnl.toFixed(2) + ' USDT';
-                document.getElementById('gateUnrealizedPnl').style.color = unPnl >= 0 ? 'var(--green)' : 'var(--red)';
-                
-                document.getElementById('gateMm').innerText = mmVal.toFixed(2) + ' USDT';
-            }
-
-            if (document.getElementById('dailyPnL')) {
-                document.getElementById('dailyPnL').innerText = (unPnl >= 0 ? '+$' : '-$') + Math.abs(unPnl).toFixed(2);
-                document.getElementById('dailyPnL').style.color = unPnl >= 0 ? 'var(--green)' : 'var(--red)';
-            }
-        }
 
         window.onload = () => {
             initTradingViewChart(currentSymbol);
             // Start Gate.io public ticker sync immediately (live balance + prices)
             fetchLiveGateIoTickers();
-            setInterval(fetchLiveGateIoTickers, 500);
+            setInterval(fetchLiveGateIoTickers, 300);
             // Start backend data polling
             fetchTerminalData();
-            setInterval(fetchTerminalData, 500);
+            setInterval(fetchTerminalData, 300);
         };
         // ============================================
         // 1-CLICK IN-DASHBOARD TRADE EXECUTION (ZERO BROWSER POPUPS)
